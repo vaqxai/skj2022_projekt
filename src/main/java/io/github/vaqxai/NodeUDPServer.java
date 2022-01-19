@@ -6,20 +6,26 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Consumer;
 
 public class NodeUDPServer extends UDPServer {
 
-	private final ReentrantLock lock;
-	private final Condition messageReceived;
-	private String[] messageText;
+	private ReentrantLock lock;
+	private Consumer<DatagramPacket> callback;
 	
-	public NodeUDPServer(int port, ReentrantLock lock, Condition messageReceived, String[] messageText){
+	public NodeUDPServer(int port, Consumer<DatagramPacket> callback){
 		super(port);
 
-		this.lock = lock;
-		this.messageReceived = messageReceived;
-		this.messageText = messageText;
+		this.callback = callback;
 
+	}
+
+	public NodeUDPServer(int port){
+		super(port);
+	}
+
+	public void setCallback(Consumer<DatagramPacket> callback){
+		this.callback = callback;
 	}
 
 	// This is overridden to remove a debug message.
@@ -64,11 +70,8 @@ public class NodeUDPServer extends UDPServer {
 			String receivedStr = new String(packet.getData(), 0, packet.getLength());
 			received.add(new Message(receivedStr, incomingAdddress.getHostAddress(), packet.getPort()));
 
-			messageText[0] = receivedStr;
-			messageText[1] = incomingAdddress.getHostAddress();
-			messageText[2] = "" + packet.getPort();
+			callback.accept(packet);
 
-			messageReceived.signalAll();
 		} catch (IOException e){
 			System.err.println(e);
 		} finally {

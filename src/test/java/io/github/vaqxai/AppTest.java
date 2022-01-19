@@ -95,6 +95,32 @@ class AppTest {
         NetworkNode test2 = new NetworkNode("#2", 7001, "localhost", 7000, "A:3 B:1");
         } catch (InterruptedException e) {}
         
+    }
+
+    @Test
+    void simpleNetwork(){
+        new Thread(new Runnable(){
+            public void run(){
+                System.out.println("Starting network node #1");
+                NetworkNode test = new NetworkNode("#1", 7000, null, 0, "A:3 B:1");
+            }
+        }).start();
+
+        new Thread(new Runnable(){
+            public void run(){
+                try{
+                Thread.sleep(500);
+                System.out.println("Starting network node #3");
+                NetworkNode test3 = new NetworkNode("#3", 7002, "localhost", 7000, "A:3 B:1");
+                } catch (InterruptedException e) {}
+            }
+        }).start();
+        
+        try{
+        Thread.sleep(500);
+        System.out.println("Starting network node #2");
+        NetworkNode test2 = new NetworkNode("#2", 7001, "localhost", 7000, "A:3 B:1");
+        } catch (InterruptedException e) {}
         
     }
 }
