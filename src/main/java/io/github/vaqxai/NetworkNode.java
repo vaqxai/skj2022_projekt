@@ -97,7 +97,7 @@ public class NetworkNode {
 		final Condition messageReceived = lock.newCondition();
 		final Condition messageProcessed = lock.newCondition();
 
-		nodeUdpServer = new NodeUDPServer(tcpPort, lock, messageReceived, messageProcessed, messageText, messageFromNode);
+		nodeUdpServer = new NodeUDPServer(tcpPort);
 		nodeTcpServer = new TCPServer(tcpPort);
 
 		execSvc.submit(nodeUdpServer);
@@ -122,6 +122,28 @@ public class NetworkNode {
 				System.err.println(e);
 			}
 			return "";
+		});
+
+		nodeUdpServer.setCallback((packet) -> {
+
+			try{
+			lock.lock();
+			InetAddress incomingAdddress = packet.getAddress();
+
+			String receivedStr = new String(packet.getData(), 0, packet.getLength());
+
+			messageText[0] = receivedStr;
+			messageText[1] = incomingAdddress.getHostAddress();
+			messageText[2] = "" + packet.getPort();
+			messageFromNode[0] = true;
+
+			messageReceived.signalAll();
+			messageProcessed.await();
+
+			} catch (InterruptedException e){
+				System.err.println(e);
+			}
+
 		});
 
 		// Network handshake for non-first nodes
