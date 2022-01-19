@@ -4,13 +4,10 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 
 public class NodeUDPServer extends UDPServer {
 
-	private ReentrantLock lock;
 	private Consumer<DatagramPacket> callback;
 	
 	public NodeUDPServer(int port, Consumer<DatagramPacket> callback){
@@ -59,23 +56,24 @@ public class NodeUDPServer extends UDPServer {
 
 	public void run(){
 
-		try {
-			buf = new byte[256];
-			DatagramPacket packet = new DatagramPacket(buf, buf.length);
-			socket.receive(packet);
+		while(true){
 
-			lock.lock();
-			InetAddress incomingAdddress = packet.getAddress();
+			try {
+				buf = new byte[256];
+				DatagramPacket packet = new DatagramPacket(buf, buf.length);
+				socket.receive(packet);
 
-			String receivedStr = new String(packet.getData(), 0, packet.getLength());
-			received.add(new Message(receivedStr, incomingAdddress.getHostAddress(), packet.getPort()));
+				InetAddress incomingAdddress = packet.getAddress();
 
-			callback.accept(packet);
+				String receivedStr = new String(packet.getData(), 0, packet.getLength());
+				received.add(new Message(receivedStr, incomingAdddress.getHostAddress(), packet.getPort()));
 
-		} catch (IOException e){
-			System.err.println(e);
-		} finally {
-			lock.unlock();
+				callback.accept(packet);
+
+			} catch (IOException e){
+				System.err.println(e);
+			}
+
 		}
 
 	}

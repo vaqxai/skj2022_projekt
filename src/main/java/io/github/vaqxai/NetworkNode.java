@@ -3,6 +3,7 @@ package io.github.vaqxai;
 import java.io.*;
 import java.net.*;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.locks.Condition;
@@ -23,20 +24,25 @@ public class NetworkNode {
 	private ArrayList<String> outerAddresses = new ArrayList<>();
 
 	private void printInfo(String info){
+
 		if(!silentMode)
-			System.out.println("[Node " + identifier + "]: " + info);
+			System.out.println("[" + identifier + "] " + info);
 	}
 
 	private void processAddCmd(String addNodeAddrStr){
+
+		String[] addNodeAddrStrArr = addNodeAddrStr.split(" ");
 		
-		if(innerAddresses.size() < 4){
-			innerAddresses.add(addNodeAddrStr);
-			printInfo(" Added " + addNodeAddrStr + " to inner addresses.");
-		} else if(outerAddresses.size() < 4){
-			outerAddresses.add(addNodeAddrStr);
-			printInfo(" Added " + addNodeAddrStr + " to outer addresses.");
-		} else {
-			throw new RuntimeException("Got add command despite having 8 networks conntected");
+		for (String addNodeAddr : addNodeAddrStrArr){
+			if(innerAddresses.size() < 4){
+				innerAddresses.add(addNodeAddr);
+				printInfo("  Added " + addNodeAddr + " to inner addresses.");
+			} else if(outerAddresses.size() < 4){
+				outerAddresses.add(addNodeAddr);
+				printInfo("  Added " + addNodeAddr + " to outer addresses.");
+			} else {
+				throw new RuntimeException("Got add command despite having 8 networks conntected");
+			}
 		}
 
 	}
@@ -52,16 +58,21 @@ public class NetworkNode {
 		}
 
 		// send other nodes' info to the new node
+		String addStr = "";
 		for(String gatewayAddrStr : addressTable){
+			addStr += gatewayAddrStr + " ";
+		}
+
+		if(addStr != ""){
 			String newNodeAddr = newNodeAddrStr.split(":")[0];
 			int newNodePort = Integer.parseInt(newNodeAddrStr.split(":")[1]);
-			nodeUdpServer.send("ADD " + gatewayAddrStr, newNodeAddr, newNodePort);
-			printInfo("Sent ADD to " + gatewayAddrStr + " with address " + newNodeAddrStr);
+			nodeUdpServer.send("ADD " + addStr, newNodeAddr, newNodePort);
+			printInfo("Sent ADD to " + newNodeAddrStr + " with addresses " + addStr);
 		}
 
 		// add new node to own address table
 		addressTable.add(newNodeAddrStr);
-		printInfo(" Processed new node " + newNodeAddrStr + " and added them to the network and own table.");
+		printInfo("  Processed new node " + newNodeAddrStr + " and added them to the network and own table.");
 
 	}
 
@@ -77,6 +88,9 @@ public class NetworkNode {
 
 		} else {
 
+			System.out.println("Network too big :o");
+			System.out.println(innerAddresses.toString());
+			System.out.println(outerAddresses.toString());
 			// TODO: Redirect to subnet member
 
 		}
@@ -85,7 +99,15 @@ public class NetworkNode {
 
 	public NetworkNode(String identifier, int tcpPort, String gatewayAddr, int gatewayPort, String resources){
 
-		this.identifier = identifier;
+		String ident = "?";
+		try {
+			ident = identifier + " (" + String.valueOf(Inet4Address.getLocalHost()).split("/")[1] + ":" + tcpPort + ")";
+		} catch (UnknownHostException e) {
+			ident = identifier;
+		} finally {
+			this.identifier = ident;
+		}
+
 		printInfo("Initializing...");
 
 		ExecutorService execSvc = Executors.newFixedThreadPool(2);
@@ -138,10 +160,12 @@ public class NetworkNode {
 			messageFromNode[0] = true;
 
 			messageReceived.signalAll();
-			messageProcessed.await();
+			//messageProcessed.await();
+			lock.unlock();
 
-			} catch (InterruptedException e){
+			} catch (Exception e){
 				System.err.println(e);
+				lock.unlock();
 			}
 
 		});
@@ -152,7 +176,7 @@ public class NetworkNode {
 
 			innerAddresses.add(gatewayAddr + ":" + gatewayPort);
 			nodeUdpServer.send("CON", gatewayAddr, gatewayPort);
-			printInfo("Asked " + gatewayAddr + ":" + gatewayPort + " to connect us to the network.");
+			printInfo("  Asked " + gatewayAddr + ":" + gatewayPort + " to connect us to the network.");
 
 		}
 
@@ -164,20 +188,31 @@ public class NetworkNode {
 			lock.lock();
 			try{
 
-				messageReceived.await();
+				if(messageText[0] == null || messageText[1] == null || messageText[2] == null){
+					continue;
+				}
 
 				printInfo("INCOMING MSG: [" + messageText[1] + ":" + messageText[2] + "] > " + messageText[0]);
 
 				String[] messageTextArray = messageText[0].split(" ");
 
+				String command = "";
+				String commandArgs = "";
+				if(messageText[0].length() > 4){
+					command = messageText[0].substring(0, 3);
+					commandArgs = messageText[0].substring(4);
+				} else if (messageText[0].length() == 3) {
+					command = messageText[0];
+				}
+
 				if(messageFromNode[0]){
 
-					switch(messageTextArray[0]){
+					switch(command){
 						case "CON":
 							nodeConnected(messageText[1] + ":" + messageText[2]);
 							break;
 						case "ADD":
-							processAddCmd(messageTextArray[1]);
+							processAddCmd(commandArgs);
 							break;
 						default:
 							// TODO: Unknown command
@@ -190,13 +225,16 @@ public class NetworkNode {
 
 				messageText[0] = "ERROR";
 
-				System.out.println(identifier + " Waiting...");
+				messageProcessed.signalAll();
+
+				messageReceived.await();
 
 			} catch (InterruptedException e) {
 				System.err.println(e);
 				break;
+			} finally {
+				lock.unlock();
 			}
-			lock.unlock();
 		}
 
 		System.out.println("END");
