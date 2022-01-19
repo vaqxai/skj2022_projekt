@@ -4,6 +4,9 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
+
 /**
  * @author s22666, Stanisław Knapiński
  */
@@ -99,6 +102,7 @@ class AppTest {
 
     @Test
     void simpleNetwork(){
+
         new Thread(new Runnable(){
             public void run(){
                 System.out.println("Starting network node #1");
@@ -196,11 +200,25 @@ class AppTest {
             }
         }).start();
         
+        new Thread(new Runnable(){
+            public void run(){
+            try{
+            Thread.sleep(500);
+            System.out.println("Starting network node #2");
+            NetworkNode test2 = new NetworkNode("#2", 7001, "localhost", 7000, "A:3 B:1");
+            } catch (InterruptedException e) {}
+            }
+        }).start();
+
+
         try{
-        Thread.sleep(500);
-        System.out.println("Starting network node #2");
-        NetworkNode test2 = new NetworkNode("#2", 7001, "localhost", 7000, "A:3 B:1");
-        } catch (InterruptedException e) {}
-        
+            Thread.sleep(10000);
+            System.out.println("Time's up! Terminating the network.");
+            TCPClient terminator = new TCPClient("localhost", 7000);
+            terminator.send("TERMINATE");
+        } catch (InterruptedException e) {
+            System.err.println(e);
+        }
+
     }
 }

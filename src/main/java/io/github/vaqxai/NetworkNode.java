@@ -20,8 +20,8 @@ public class NetworkNode {
 	// for inter-node communication
 	public NodeUDPServer nodeUdpServer = null;
 
-	private ArrayList<String> innerAddresses = new ArrayList<>();
-	private ArrayList<String> outerAddresses = new ArrayList<>();
+	ArrayList<String> innerAddresses = new ArrayList<>();
+	ArrayList<String> outerAddresses = new ArrayList<>();
 
 	private void printInfo(String info){
 
