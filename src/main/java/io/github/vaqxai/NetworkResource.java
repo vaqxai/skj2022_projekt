@@ -1,29 +1,43 @@
 package io.github.vaqxai;
 
+import java.util.HashMap;
+
 public class NetworkResource {
 
-	private String owner = null;
-	private String identifier = "?";
-	private int lockedAmount = 0;
-	private int availableAmount = 0;
+	private HashMap<String, Integer> owners = new HashMap<>(); // X is owner of 5 counts of this resource, etc...
+	private String identifier = "?"; // Resource's name/identifier
+	private String holder = null; // Address of the resource's holding node TODO: Is this necessary?
+	private int lockedAmount = 0; // How much of the resource is currently locked by other nodes or for processing
+	private int availableAmount = 0; // How much of this resource is currently available for locking
 
-	public NetworkResource(String identifier, int amount){
+	public NetworkResource(String identifier, String holder, int amount){
 		this.identifier = identifier;
+		this.holder = holder;
 		this.availableAmount = amount;
 	}
 
-	public void lock(int amount){
+	public int lock(int amount){
 		if(this.availableAmount > amount && amount > 0){
 			this.lockedAmount += amount;
 			this.availableAmount -= amount;
+			return amount;
+		} else if (this.availableAmount < amount) {
+			int partiallyLocked = this.availableAmount;
+			this.lockedAmount += this.availableAmount;
+			this.availableAmount = 0;
+			return partiallyLocked;
 		} else {
 			throw new RuntimeException("Tried to lock wrong amount of resources");
 		}
 	}
 
-	public void reserve(int amount){
-		if(this.lockedAmount >= amount){ // Reserve means delete
+	public boolean reserve(String owner, int amount){
+		if(this.lockedAmount >= amount){
 			this.lockedAmount -= amount;
+			this.owners.put(owner, amount); // X now owns y amount of this resource on this node.
+			return true;
+		} else {
+			return false;
 		}
 	}
 
@@ -48,14 +62,6 @@ public class NetworkResource {
 
 	public int getLocked(){
 		return lockedAmount;
-	}
-
-	public void setOwner(String newOwner){
-		this.owner = newOwner;
-	}
-
-	public String getOwner(){
-		return this.owner;
 	}
 	
 }
