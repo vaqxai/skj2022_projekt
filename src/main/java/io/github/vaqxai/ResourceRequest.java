@@ -11,6 +11,8 @@ public class ResourceRequest {
 		return all;
 	}
 	
+	public static int lastOrderID = 0;
+	public int orderId = 0;
 	public String originator = null; // which client put this order in (this stays the same even if order is fully or partially forwarded between nodes)
 	HashMap<String, Integer> order = new HashMap<>(); // Resource X times Y. If one node manages to lock part of the order, it will forward a partial order to other nodes.
 	HashMap<String, Integer> remaining = new HashMap<>();
@@ -93,6 +95,8 @@ public class ResourceRequest {
 		this.originator = originator;
 		this.order = order;
 		this.remaining = new HashMap<String,Integer>(order);
+		this.orderId = lastOrderID;
+		lastOrderID++;
 	}
 
 	/**
@@ -111,6 +115,8 @@ public class ResourceRequest {
 		}
 
 		this.remaining = new HashMap<String,Integer>(this.order);
+		this.orderId = lastOrderID;
+		lastOrderID++;
 	}
 
 }

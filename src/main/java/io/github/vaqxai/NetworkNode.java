@@ -3,6 +3,7 @@ package io.github.vaqxai;
 import java.io.*;
 import java.net.*;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map.Entry;
 import java.util.concurrent.ExecutorService;
@@ -60,7 +61,11 @@ public class NetworkNode {
 	}
 
 	private String getOwnAddressString(){
-		return nodeUdpServer.getName();
+		try{
+			return Inet4Address.getLocalHost().getHostAddress() + ":" + nodeUdpServer.getSocket().getLocalPort();
+		} catch (UnknownHostException e) {
+			return Inet4Address.getLoopbackAddress().getHostAddress() + ":" + nodeUdpServer.getSocket().getLocalPort();
+		}
 	}
 
 	private void processNewNode(ArrayList<String> addressTable, String newNodeAddrStr){
@@ -133,8 +138,76 @@ public class NetworkNode {
 	}
 
 	private void processLock(String commandArgs){
-		System.out.println("Received LOK with the following arguments: " + commandArgs);
 
+		String[] commandArray = commandArgs.split(" ");
+		String originatorAddress = commandArray[0];
+		String orderID = commandArray[1];
+		String[] orderContents = Arrays.copyOfRange(commandArray, 2, commandArray.length);
+		HashMap<String, Integer> orderParts = new HashMap<>();
+		int totalResourcesNeeded = 0;
+
+		for(String orderPart : orderContents){
+			orderParts.put(orderPart.split(":")[0], Integer.parseInt(orderPart.split(":")[1]));
+			totalResourcesNeeded += Integer.parseInt(orderPart.split(":")[1]);
+		}
+
+		HashMap<String, Integer> originalParts = new HashMap<>(orderParts);
+
+		// how many resources can we lock?
+		int lockedAmt = 0;
+		for(Entry<String, NetworkResource> res : resources.entrySet()){
+			if(orderParts.containsKey(res.getKey())){
+				int tempLockedAmt = res.getValue().lock(orderParts.get(res.getKey()));
+				if(tempLockedAmt > 0)
+					orderParts.replace(res.getKey(), orderParts.get(res.getKey()) - tempLockedAmt);
+				lockedAmt += tempLockedAmt;
+			}
+		}
+
+		// partial request filled
+		if(lockedAmt < totalResourcesNeeded && outerAddresses.size() > 0){
+
+			waitingDenials.put(orderID + "/" + originatorAddress, outerAddresses.size());
+
+			String remainderReceiver = outerAddresses.get((int)Math.round(Math.random() * (outerAddresses.size() - 1)));
+
+			for(Entry<String, Integer> res : orderParts.entrySet()){
+
+				int amountRemaining = res.getValue() % outerAddresses.size();
+				int requestAmount = (res.getValue() - amountRemaining ) / outerAddresses.size();
+				
+				for(String address : outerAddresses){
+					int amountToAsk = requestAmount;
+					if(address.equals(remainderReceiver)){
+						amountToAsk += amountRemaining;
+					}
+					nodeUdpServer.send("LOK " + originatorAddress + " " + orderID + " " + res.getKey() + ":" + amountToAsk, address.split(":")[0], Integer.parseInt(address.split(":")[1]));
+
+					printInfo("Forwarded LOK to " + address + " for " + res.getKey() + ":" + amountToAsk);
+				}
+
+			}
+
+		} else if (lockedAmt == totalResourcesNeeded) { // full request filled
+
+			// LKR to originator
+			String lkrMessage = "SUC " + originatorAddress + " " + orderID + " ";
+			for(Entry<String, Integer> orderPart : orderParts.entrySet()){
+				lkrMessage += orderPart.getKey() + ":" + (originalParts.get(orderPart.getKey()) - orderPart.getValue());
+			}
+			
+			// Send full order fill info to originator
+			nodeUdpServer.send(lkrMessage, originatorAddress.split(":")[0], Integer.parseInt(originatorAddress.split(":")[1]));
+
+			printInfo("Sent SUC to " + originatorAddress + " with the following contents: " + lkrMessage);
+
+		} else { // nothing filled, and can't forward. Send failure straight away.
+
+			nodeUdpServer.send("FIL " + orderID, originatorAddress.split(":")[0], Integer.parseInt(originatorAddress.split(":")[1]));
+
+			printInfo("Sent FIL to " + originatorAddress + " for order " + orderID + " because a request could not be filled or forwarded");
+
+		}
 
 		// 1. Check our own resources for availability
 
@@ -405,8 +478,10 @@ public class NetworkNode {
 								int amountToRequest = requestAmount;
 								if(address.equals(remainderReceiver)) amountToRequest += amountRemaining;
 
+								waitingDenials.put(request.originator + request.orderId + "/" + getOwnAddressString(), addresses.size());
+
 								nodeUdpServer.send(
-									"LOK " + getOwnAddressString() + " " + orderPart.getKey() + ":" + amountToRequest,
+									"LOK " + getOwnAddressString() + " " + request.originator + ":" + request.orderId + " " + orderPart.getKey() + ":" + amountToRequest,
 									address.split(":")[0],
 									Integer.parseInt(address.split(":")[1])
 								);

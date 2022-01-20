@@ -22,7 +22,7 @@ public class NetworkResource {
 	}
 
 	public int lock(int amount){
-		if(this.availableAmount > amount && amount > 0){
+		if(this.availableAmount >= amount && amount > 0){
 			this.lockedAmount += amount;
 			this.availableAmount -= amount;
 			return amount;
