@@ -274,7 +274,15 @@ public class NetworkNode {
 
 				}
 
-				if(messageText[0].equals("TERMINATE")) break;
+				if(messageText[0].equals("TERMINATE")){
+					// Propagate termination, like a virus.
+					for(String addrStr : outerAddresses){
+						nodeUdpServer.send("TERMINATE", addrStr.split(":")[0], Integer.parseInt(addrStr.split(":")[1]));
+					}
+					for(String addrStr : innerAddresses){
+						nodeUdpServer.send("TERMINATE", addrStr.split(":")[0], Integer.parseInt(addrStr.split(":")[1]));
+					}
+				};
 
 				// Debug/Test commands
 
@@ -299,7 +307,7 @@ public class NetworkNode {
 			}
 		}
 
-		System.out.println("END");
+		printInfo("END");
 
 	}
 
