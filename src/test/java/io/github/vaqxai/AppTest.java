@@ -234,4 +234,26 @@ class AppTest {
         }
 
     }
+
+    @Test
+    public void resourceCreationTest(){
+
+        new Thread(new Runnable(){
+            public void run(){
+                System.out.println("Starting network node #1");
+                NetworkNode test = new NetworkNode("#1", 7000, null, 0, "A:3 B:1 F:9 dupa:12837 Z:8");
+            }
+        }).start();
+
+        try {
+            Thread.sleep(100);
+            TCPClient queryClient = new TCPClient("localhost", 7000);
+            queryClient.send("RESOURCES");
+            queryClient.send("LOCK A:2");
+            queryClient.send("RESOURCES");
+        } catch (InterruptedException e) {
+            System.err.println(e);
+        }
+
+    }
 }

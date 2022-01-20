@@ -3,7 +3,8 @@ package io.github.vaqxai;
 import java.io.*;
 import java.net.*;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map.Entry;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.locks.Condition;
@@ -22,6 +23,8 @@ public class NetworkNode {
 
 	ArrayList<String> innerAddresses = new ArrayList<>();
 	ArrayList<String> outerAddresses = new ArrayList<>();
+
+	HashMap<String, NetworkResource> resources = new HashMap<>();
 
 	private void printInfo(String info){
 
@@ -97,6 +100,31 @@ public class NetworkNode {
 
 	}
 
+	private void processResources(String resourceString){
+
+		String[] resourceArray = resourceString.split(" ");
+
+		for(String singleResString : resourceArray){
+			String resName = singleResString.split(":")[0];
+			int resAmount = Integer.parseInt(singleResString.split(":")[1]);
+
+			resources.put(resName, new NetworkResource(resName, resAmount));
+		}
+
+	}
+	
+	public void printResources(){
+
+		printInfo("Resources:");
+		for(Entry<String, NetworkResource> res : resources.entrySet()){
+			NetworkResource resVal = res.getValue();
+			printInfo("  Name: " + resVal.getIdentifier());
+			printInfo("    Available: " + resVal.getAvailable());
+			printInfo("    Locked: " + resVal.getLocked());
+		}
+
+	}
+
 	public NetworkNode(String identifier, int tcpPort, String gatewayAddr, int gatewayPort, String resources){
 
 		String ident = "?";
@@ -109,6 +137,8 @@ public class NetworkNode {
 		}
 
 		printInfo("Initializing...");
+
+		processResources(resources);
 
 		ExecutorService execSvc = Executors.newFixedThreadPool(2);
 
@@ -129,7 +159,7 @@ public class NetworkNode {
 		nodeUdpServer.setSilentMode(true);
 
 		// Client message callback
-		
+
 		nodeTcpServer.setAutoResponse((sock, message) -> {
 			try{
 				lock.lock();
@@ -145,6 +175,8 @@ public class NetworkNode {
 			}
 			return "";
 		});
+
+		// Node message callback
 
 		nodeUdpServer.setCallback((packet) -> {
 
@@ -222,6 +254,15 @@ public class NetworkNode {
 				}
 
 				if(messageText[0].equals("TERMINATE")) break;
+
+				// Debug/Test commands
+
+				if(messageText[0].equals("RESOURCES")) printResources();
+
+				if(messageText[0].startsWith("LOCK")){
+					String res = messageText[0].split(" ")[1];
+					this.resources.get(res.split(":")[0]).lock(Integer.parseInt(res.split(":")[1]));
+				}
 
 				messageText[0] = "ERROR";
 
