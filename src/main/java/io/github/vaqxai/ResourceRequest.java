@@ -1,16 +1,33 @@
 package io.github.vaqxai;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 
 public class ResourceRequest {
+
+	static ArrayList<ResourceRequest> all = new ArrayList<>();
+
+	public static ArrayList<ResourceRequest> getAll(){
+		return all;
+	}
 	
 	public String originator = null; // which client put this order in (this stays the same even if order is fully or partially forwarded between nodes)
 	HashMap<String, Integer> order = new HashMap<>(); // Resource X times Y. If one node manages to lock part of the order, it will forward a partial order to other nodes.
+	HashMap<String, Integer> remaining = new HashMap<>();
 	HashMap<String, NetworkResource> locked = new HashMap<>(); // Resource X and resource on node that's locked by this request (the nodes do not know who locked the resources, but a request knows where it locked the resources)
 	public RequestStatus status = RequestStatus.RECEIVED; // Initial status is 'received'
+	int id = 1;
+
+	public String getIdentifier(){
+		return this.originator + ":" + this.id;
+	}
 
 	public HashMap<String, NetworkResource> getLocked(){
 		return this.locked;
+	}
+
+	public HashMap<String, Integer> getOrderRemaining(){
+		return this.remaining;
 	}
 
 	public HashMap<String, Integer> getOrder(){
@@ -24,7 +41,12 @@ public class ResourceRequest {
 	 * @return true if we managed to lock the full requested amount, false otherwise.
 	 */
 	public int lockAmount(NetworkResource toFulfillWith, int amount){ // We want to claim X amount of resource Y on node Z
-		return toFulfillWith.lock(amount);
+
+		int orderTotal = this.order.get(toFulfillWith.getIdentifier());
+		int lockedAmt = toFulfillWith.lock(orderTotal);
+		this.remaining.replace(toFulfillWith.getIdentifier(), this.remaining.get(toFulfillWith.getIdentifier()) - lockedAmt);
+		locked.put(toFulfillWith.getIdentifier(), toFulfillWith);
+		return lockedAmt;
 	}
 
 	/**
@@ -33,9 +55,8 @@ public class ResourceRequest {
 	 * @return how much could be locked
 	 */
 	public int lockAmount(NetworkResource toFulfillWith){ // We want to claim as much as is in the order or less of resource X on node Y
-		int lockedAmt = toFulfillWith.lock(this.order.get(toFulfillWith.getIdentifier()));
-		locked.put(toFulfillWith.getIdentifier(), toFulfillWith);
-		return lockedAmt;
+
+		return lockAmount(toFulfillWith, this.order.get(toFulfillWith.getIdentifier()));
 	}
 
 	/**
@@ -71,6 +92,7 @@ public class ResourceRequest {
 	public ResourceRequest(String originator, HashMap<String, Integer> order){
 		this.originator = originator;
 		this.order = order;
+		this.remaining = new HashMap<String,Integer>(order);
 	}
 
 	/**
@@ -87,6 +109,8 @@ public class ResourceRequest {
 
 			this.order.put(resourceIdentifier, resourceAmount);
 		}
+
+		this.remaining = new HashMap<String,Integer>(this.order);
 	}
 
 }

@@ -28,6 +28,13 @@ public class NetworkNode {
 	HashMap<String, NetworkResource> resources = new HashMap<>();
 	HashMap<String, NetworkResource> allocatedResources = new HashMap<>();
 
+	HashMap<String, Integer> waitingDenials = new HashMap<>();
+
+	/**
+	 * Where String is order ID : clientIdentifier:sequentialNumber
+	 */
+	HashMap<String, ResourceRequest> requestsInProgress = new HashMap<>();
+
 	private void printInfo(String info){
 
 		if(!silentMode)
@@ -125,6 +132,20 @@ public class NetworkNode {
 
 	}
 
+	private void processLock(String commandArgs){
+		System.out.println("Received LOK with the following arguments: " + commandArgs);
+
+
+		// 1. Check our own resources for availability
+
+		// 2. If we can't fully fill the request, but can fill it partially, lock our resource, send a response, and forward a partial request to our sub-net if we have it.
+
+		// 3. If we can't fill the request at all, just forward a partial request to our sub-net if we have one.
+
+		// Send a negative response if we can't fill the request at all and we don't have a subnet.
+
+	}
+
 	private void processRedirect(String commandArgs){
 
 			innerAddresses.remove(0);
@@ -153,15 +174,8 @@ public class NetworkNode {
 
 	public NetworkNode(String identifier, int tcpPort, String gatewayAddr, int gatewayPort, String resources){
 
-		String ident = "?";
-		try {
-			ident = identifier + " (" + String.valueOf(Inet4Address.getLocalHost()).split("/")[1] + ":" + tcpPort + ")";
-		} catch (UnknownHostException e) {
-			ident = identifier;
-		} finally {
-			this.identifier = ident;
-		}
-
+		this.identifier = identifier + " (:" + tcpPort + ")";
+	
 		printInfo("Initializing...");
 
 		ExecutorService execSvc = Executors.newFixedThreadPool(2);
@@ -233,8 +247,8 @@ public class NetworkNode {
 		if((gatewayAddr != null) && (gatewayPort > 0)){
 
 			innerAddresses.add(gatewayAddr + ":" + gatewayPort);
-			nodeUdpServer.send("CON", gatewayAddr, gatewayPort);
-			printInfo("  Asked " + gatewayAddr + ":" + gatewayPort + " to connect us to the network.");
+			nodeUdpServer.send("HONK", gatewayAddr, gatewayPort);
+			printInfo("  Asked (honked at) " + gatewayAddr + ":" + gatewayPort + " to connect us to the network.");
 
 		}
 
@@ -264,6 +278,7 @@ public class NetworkNode {
 					for(String addrStr : innerAddresses){
 						nodeUdpServer.send("TERMINATE", addrStr.split(":")[0], Integer.parseInt(addrStr.split(":")[1]));
 					}
+					break;
 				};
 
 				// Debug/Test commands
@@ -281,7 +296,7 @@ public class NetworkNode {
 
 				String command = "";
 				String commandArgs = "";
-				if(messageText[0].length() > 4){
+				if(messageText[0].length() > 3){
 					command = messageText[0].substring(0, 3);
 					commandArgs = messageText[0].substring(4);
 				} else if (messageText[0].length() == 3) {
@@ -293,7 +308,7 @@ public class NetworkNode {
 				if(messageFromNode[0]){
 
 					switch(command){
-						case "CON": // New node connects to the network via us
+						case "HON"://K // New node connects to the network (honks to us) via us
 							nodeConnected(messageText[1] + ":" + messageText[2]);
 							break;
 						case "ADD": // We are adding a new node to our tables
@@ -302,8 +317,10 @@ public class NetworkNode {
 						case "DIR": // We are being redirected
 							processRedirect(commandArgs);
 							break;
+						case "LOK": // Someone requests our resources
+							processLock(commandArgs);
+							break;
 						default: // We don't know
-							printInfo("Unknown Command");
 							break;
 					}
 
@@ -317,6 +334,7 @@ public class NetworkNode {
 
 					String clientIdentifier = clientMessageArray[0];
 					ResourceRequest request = new ResourceRequest(clientIdentifier, clientMessageArray[1]);
+					request.status = RequestStatus.PROCESSING;
 
 					// 1. Check if we have the resources they want ourselves, and respond immediately if we do, block all we can if we don't.
 
@@ -330,6 +348,7 @@ public class NetworkNode {
 
 					if(amountLocked[0] == request.order.values().stream().reduce(0, (a, b) -> a + b)){
 
+						request.status = RequestStatus.FINALIZED;
 						request.finalizeOrder();
 
 						ClientHandler cli = null;
@@ -364,6 +383,40 @@ public class NetworkNode {
 						}
 
 					} else {
+
+						for (Entry<String, Integer> orderPart : request.getOrderRemaining().entrySet()){
+
+							int amountRemaining = request.getOrderRemaining().get(orderPart.getKey());
+
+							ArrayList<String> addresses = outerAddresses;
+							if(outerAddresses.size() == 0){
+								addresses = innerAddresses;
+							}
+
+							int requestAmount = (amountRemaining - (amountRemaining % addresses.size()) ) / addresses.size();
+							amountRemaining = amountRemaining % addresses.size();
+
+							String remainderReceiver = addresses.get((int)Math.round(Math.random() * (addresses.size() - 1)));
+
+							for(String address : addresses){
+
+								request.status = RequestStatus.WAITING;
+								
+								int amountToRequest = requestAmount;
+								if(address.equals(remainderReceiver)) amountToRequest += amountRemaining;
+
+								nodeUdpServer.send(
+									"LOK " + getOwnAddressString() + " " + orderPart.getKey() + ":" + amountToRequest,
+									address.split(":")[0],
+									Integer.parseInt(address.split(":")[1])
+								);
+
+								printInfo("Failed to allocate needed resources on the local node. Forwarding the request to the subnet.");
+
+							}
+							
+						}
+
 
 						// 2. Send remainder of request to our subnet, divided by the amount of members of our subnet. (If we have a subnet)
 

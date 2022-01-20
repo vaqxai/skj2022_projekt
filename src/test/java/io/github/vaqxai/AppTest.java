@@ -1,8 +1,5 @@
 package io.github.vaqxai;
 
-import java.net.InetAddress;
-import java.net.UnknownHostException;
-
 import org.junit.jupiter.api.Test;
 
 /**
@@ -294,6 +291,44 @@ class AppTest {
             System.out.println("Cli: " + queryClient.get());
             System.out.println("Cli: " + queryClient.get());
             queryClient.send("RESOURCES");
+        } catch (InterruptedException e) {
+            System.err.println(e);
+        }
+
+    }
+
+    @Test
+    public void partialAllocationTest(){
+
+        new Thread(new Runnable(){
+            public void run(){
+                System.out.println("Starting network node #1");
+                new NetworkNode("#1", 7000, null, 0, "A:3 B:1 F:9 dupa:12837 Z:8");
+            }
+        }).start();
+
+        new Thread(new Runnable(){
+            public void run(){
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    System.err.println(e);
+                }
+                System.out.println("Starting network node #2");
+                new NetworkNode("#2", 7001, "localhost", 7000, "C:4");
+            }
+        }).start();
+
+        try {
+            Thread.sleep(200);
+            TCPClient queryClient = new TCPClient("192.168.1.15", 7000);
+
+            queryClient.send("Klient1 C:4");
+            Thread.sleep(1000);
+            System.out.println("Cli: " + queryClient.get());
+            System.out.println("Cli: " + queryClient.get());
+            System.out.println("Cli: " + queryClient.get());
+
         } catch (InterruptedException e) {
             System.err.println(e);
         }
