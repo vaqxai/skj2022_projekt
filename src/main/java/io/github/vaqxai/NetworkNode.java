@@ -14,6 +14,7 @@ public class NetworkNode {
 
 	public final String identifier;
 	public boolean silentMode = false;
+	private int lastRedirIndex = -1;
 
 	// for client communication
 	public TCPServer nodeTcpServer = null;
@@ -90,11 +91,17 @@ public class NetworkNode {
 			processNewNode(outerAddresses, gatewayAddrStr);
 
 		} else {
+			
+			if(lastRedirIndex > 2)
+				lastRedirIndex = -1;
+			
+			nodeUdpServer.send(
+				"DIR " + outerAddresses.get(++lastRedirIndex),
+				gatewayAddrStr.split(":")[0],
+				Integer.parseInt(gatewayAddrStr.split(":")[1])
+			);
 
-			System.out.println("Network too big :o");
-			System.out.println(innerAddresses.toString());
-			System.out.println(outerAddresses.toString());
-			// TODO: Redirect to subnet member
+			printInfo("Redirected " + gatewayAddrStr + " to " + outerAddresses.get(lastRedirIndex) + " because the current network member limit has been reached.");
 
 		}
 
@@ -112,7 +119,20 @@ public class NetworkNode {
 		}
 
 	}
-	
+
+	private void processRedirect(String commandArgs){
+
+			innerAddresses.remove(0);
+
+			String gatewayAddr = commandArgs.split(":")[0];
+			int gatewayPort = Integer.parseInt(commandArgs.split(":")[1]);
+
+			innerAddresses.add(commandArgs);
+			nodeUdpServer.send("CON", gatewayAddr, gatewayPort);
+			printInfo("  Asked " + gatewayAddr + ":" + gatewayPort + " to connect us to the network.");
+
+	}
+
 	public void printResources(){
 
 		printInfo("Resources:");
@@ -243,6 +263,9 @@ public class NetworkNode {
 							break;
 						case "ADD":
 							processAddCmd(commandArgs);
+							break;
+						case "DIR":
+							processRedirect(commandArgs);
 							break;
 						default:
 							// TODO: Unknown command
