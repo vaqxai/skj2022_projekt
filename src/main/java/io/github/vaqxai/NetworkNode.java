@@ -226,8 +226,6 @@ public class NetworkNode {
 
 				printInfo("INCOMING MSG: [" + messageText[1] + ":" + messageText[2] + "] > " + messageText[0]);
 
-				String[] messageTextArray = messageText[0].split(" ");
-
 				String command = "";
 				String commandArgs = "";
 				if(messageText[0].length() > 4){
