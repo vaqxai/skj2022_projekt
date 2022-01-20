@@ -10,6 +10,11 @@ public class NetworkResource {
 	private int lockedAmount = 0; // How much of the resource is currently locked by other nodes or for processing
 	private int availableAmount = 0; // How much of this resource is currently available for locking
 
+
+	public HashMap<String, Integer> getOwners(){
+		return owners;
+	}
+
 	public NetworkResource(String identifier, String holder, int amount){
 		this.identifier = identifier;
 		this.holder = holder;

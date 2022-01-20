@@ -9,15 +9,42 @@ public class ResourceRequest {
 	HashMap<String, NetworkResource> locked = new HashMap<>(); // Resource X and resource on node that's locked by this request (the nodes do not know who locked the resources, but a request knows where it locked the resources)
 	public RequestStatus status = RequestStatus.RECEIVED; // Initial status is 'received'
 
+	public HashMap<String, NetworkResource> getLocked(){
+		return this.locked;
+	}
+
+	public HashMap<String, Integer> getOrder(){
+		return this.order;
+	}
+
 	/**
 	 * Locks x amount of resource y on node z or less.
-	 * @param toFulfillWith Node to partially/fully fulfill this order with
+	 * @param toFulfillWith Which resource to partially/fully fulfill this order with
 	 * @param amount the amount to request from the networkResource
 	 * @return true if we managed to lock the full requested amount, false otherwise.
 	 */
-	public boolean lockAmount(NetworkResource toFulfillWith, int amount){ // We want to claim X amount of resource Y on node Z
-		int lockedAmount = toFulfillWith.lock(amount);
-		return this.order.get(toFulfillWith.getIdentifier()) == lockedAmount;
+	public int lockAmount(NetworkResource toFulfillWith, int amount){ // We want to claim X amount of resource Y on node Z
+		return toFulfillWith.lock(amount);
+	}
+
+	/**
+	 * Locks as much as is in the order or less of resource x.
+	 * @param toFulfillWith Which resource to partially/fully fulfill this order with
+	 * @return how much could be locked
+	 */
+	public int lockAmount(NetworkResource toFulfillWith){ // We want to claim as much as is in the order or less of resource X on node Y
+		int lockedAmt = toFulfillWith.lock(this.order.get(toFulfillWith.getIdentifier()));
+		locked.put(toFulfillWith.getIdentifier(), toFulfillWith);
+		return lockedAmt;
+	}
+
+	/**
+	 * Unlocks all resources held by this request on all networkResources
+	 */
+	public void release(){
+		for(NetworkResource resource : locked.values()){
+			resource.unlock(order.get(resource.getIdentifier()));
+		}
 	}
 
 	/**

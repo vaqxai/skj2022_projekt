@@ -1,5 +1,8 @@
 package io.github.vaqxai;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+
 import org.junit.jupiter.api.Test;
 
 /**
@@ -283,11 +286,13 @@ class AppTest {
 
         try {
             Thread.sleep(100);
-            TCPClient queryClient = new TCPClient("localhost", 7000);
+            TCPClient queryClient = new TCPClient("192.168.1.15", 7000);
             queryClient.send("RESOURCES");
-            queryClient.send("123 dupa:128");
+            queryClient.send("Klient1 dupa:128");
             Thread.sleep(500);
-            System.out.println("Cli: " + queryClient.get().getData());
+            System.out.println("Cli: " + queryClient.get());
+            System.out.println("Cli: " + queryClient.get());
+            System.out.println("Cli: " + queryClient.get());
             queryClient.send("RESOURCES");
         } catch (InterruptedException e) {
             System.err.println(e);

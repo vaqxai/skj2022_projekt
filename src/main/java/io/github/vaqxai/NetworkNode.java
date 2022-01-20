@@ -53,7 +53,7 @@ public class NetworkNode {
 	}
 
 	private String getOwnAddressString(){
-		return this.nodeUdpServer.getSocket().getInetAddress().getHostAddress() + ":" + String.valueOf(this.nodeUdpServer.getSocket().getLocalPort());
+		return nodeUdpServer.getName();
 	}
 
 	private void processNewNode(ArrayList<String> addressTable, String newNodeAddrStr){
@@ -146,6 +146,7 @@ public class NetworkNode {
 			printInfo("  Name: " + resVal.getIdentifier());
 			printInfo("    Available: " + resVal.getAvailable());
 			printInfo("    Locked: " + resVal.getLocked());
+			printInfo("    Allocated: " + resVal.getOwners().toString());
 		}
 
 	}
@@ -162,8 +163,6 @@ public class NetworkNode {
 		}
 
 		printInfo("Initializing...");
-
-		processResources(resources);
 
 		ExecutorService execSvc = Executors.newFixedThreadPool(2);
 
@@ -226,6 +225,8 @@ public class NetworkNode {
 			}
 
 		});
+
+		processResources(resources);
 
 		// Network handshake for non-first nodes
 
@@ -315,34 +316,21 @@ public class NetworkNode {
 					String[] clientMessageArray = messageText[0].split(" ");
 
 					String clientIdentifier = clientMessageArray[0];
-					HashMap<String, Integer> requestedResources = new HashMap<>();
-
-					for(int i = 1; i < clientMessageArray.length; i++){
-						requestedResources.put(clientMessageArray[i].split(":")[0], Integer.parseInt(clientMessageArray[i].split(":")[1]));
-					}
+					ResourceRequest request = new ResourceRequest(clientIdentifier, clientMessageArray[1]);
 
 					// 1. Check if we have the resources they want ourselves, and respond immediately if we do, block all we can if we don't.
 
-					for(Entry<String, Integer> requestedResource : requestedResources.entrySet()){
-						String k = requestedResource.getKey();
-						int v = requestedResource.getValue();
-						if(this.resources.get(k).getAvailable() >= v){
-							// full lock
-							this.resources.get(k).lock(v);
-							requestedResources.replace(k, 0);
-						} else if (this.resources.get(k).getAvailable() < v && this.resources.get(k).getAvailable() > 0){
-							// partial lock
-							requestedResources.replace(k, this.resources.get(k).getAvailable());
-							this.resources.get(k).lock(this.resources.get(k).getAvailable()); // lock all
-						}
-					}
+					int[] amountLocked = {0};
 
-					boolean allLocked = true;
-					for (int stillNeeded : requestedResources.values()){
-						if (stillNeeded > 0) { allLocked = false; break; }
-					}
+					this.resources.values().stream().filter(res -> {
+						return request.getOrder().keySet().contains(res.getIdentifier());
+					}).forEach(res -> {
+						amountLocked[0] += request.lockAmount(res);
+					});
 
-					if(allLocked){
+					if(amountLocked[0] == request.order.values().stream().reduce(0, (a, b) -> a + b)){
+
+						request.finalizeOrder();
 
 						ClientHandler cli = null;
 
@@ -359,15 +347,16 @@ public class NetworkNode {
 
 							cli.send("ALLOCATED");
 
-							for(Entry<String, Integer> requestedResource : requestedResources.entrySet()){
-								String k = requestedResource.getKey();
-								int v = requestedResource.getValue();
+							Socket sock = cli.getSocket();
+							String returnAddress = sock.getLocalAddress().getHostAddress();
 
-								this.resources.get(k).reserve(clientIdentifier, v);
-								this.allocatedResources.put(clientIdentifier, new NetworkResource(clientIdentifier, k, v));
-
-								System.out.println(k + ":" + v + ":" + nodeTcpServer.getSocket().getInetAddress().getHostAddress() + ":" + nodeTcpServer.getSocket().getLocalPort());
-								cli.send(k + ":" + v + ":" + nodeTcpServer.getSocket().getInetAddress().getHostAddress() + ":" + nodeTcpServer.getSocket().getLocalPort());
+							for(Entry<String, Integer> orderEntry : request.getOrder().entrySet()){
+								cli.send(
+									orderEntry.getKey() + ":" +
+									orderEntry.getValue() + ":" +
+									returnAddress + ":" +
+									String.valueOf(tcpPort)
+								);
 							}
 
 							printInfo("Successfully allocated needed resources on the local node, and informed the client.");
