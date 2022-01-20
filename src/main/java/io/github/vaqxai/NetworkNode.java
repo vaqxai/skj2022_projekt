@@ -26,6 +26,7 @@ public class NetworkNode {
 	ArrayList<String> outerAddresses = new ArrayList<>();
 
 	HashMap<String, NetworkResource> resources = new HashMap<>();
+	HashMap<String, NetworkResource> allocatedResources = new HashMap<>();
 
 	private void printInfo(String info){
 
@@ -49,6 +50,10 @@ public class NetworkNode {
 			}
 		}
 
+	}
+
+	private String getOwnAddressString(){
+		return this.nodeUdpServer.getSocket().getInetAddress().getHostAddress() + ":" + String.valueOf(this.nodeUdpServer.getSocket().getLocalPort());
 	}
 
 	private void processNewNode(ArrayList<String> addressTable, String newNodeAddrStr){
@@ -115,7 +120,7 @@ public class NetworkNode {
 			String resName = singleResString.split(":")[0];
 			int resAmount = Integer.parseInt(singleResString.split(":")[1]);
 
-			resources.put(resName, new NetworkResource(resName, resAmount));
+			resources.put(resName, new NetworkResource(resName, getOwnAddressString(), resAmount));
 		}
 
 	}
@@ -305,9 +310,79 @@ public class NetworkNode {
 
 				// Client-node communication, only communication to be received here, is a reservation request.
 
-				else {
+				else if (messageText[0].split(" ").length > 1) {
 
-					// TODO: Client-node communication
+					String[] clientMessageArray = messageText[0].split(" ");
+
+					String clientIdentifier = clientMessageArray[0];
+					HashMap<String, Integer> requestedResources = new HashMap<>();
+
+					for(int i = 1; i < clientMessageArray.length; i++){
+						requestedResources.put(clientMessageArray[i].split(":")[0], Integer.parseInt(clientMessageArray[i].split(":")[1]));
+					}
+
+					// 1. Check if we have the resources they want ourselves, and respond immediately if we do, block all we can if we don't.
+
+					for(Entry<String, Integer> requestedResource : requestedResources.entrySet()){
+						String k = requestedResource.getKey();
+						int v = requestedResource.getValue();
+						if(this.resources.get(k).getAvailable() >= v){
+							// full lock
+							this.resources.get(k).lock(v);
+							requestedResources.replace(k, 0);
+						} else if (this.resources.get(k).getAvailable() < v && this.resources.get(k).getAvailable() > 0){
+							// partial lock
+							requestedResources.replace(k, this.resources.get(k).getAvailable());
+							this.resources.get(k).lock(this.resources.get(k).getAvailable()); // lock all
+						}
+					}
+
+					boolean allLocked = true;
+					for (int stillNeeded : requestedResources.values()){
+						if (stillNeeded > 0) { allLocked = false; break; }
+					}
+
+					if(allLocked){
+
+						ClientHandler cli = null;
+
+						for(ClientHandler client : nodeTcpServer.getAllClients()){
+							Socket sock = client.getSocket();
+							if(String.valueOf(sock.getInetAddress()).equals(messageText[1]) &&
+							String.valueOf(sock.getPort()).equals(messageText[2])){
+								cli = client;
+								break;
+							}
+						}
+
+						if(cli != null){
+
+							cli.send("ALLOCATED");
+
+							for(Entry<String, Integer> requestedResource : requestedResources.entrySet()){
+								String k = requestedResource.getKey();
+								int v = requestedResource.getValue();
+
+								this.resources.get(k).reserve(clientIdentifier, v);
+								this.allocatedResources.put(clientIdentifier, new NetworkResource(clientIdentifier, k, v));
+
+								System.out.println(k + ":" + v + ":" + nodeTcpServer.getSocket().getInetAddress().getHostAddress() + ":" + nodeTcpServer.getSocket().getLocalPort());
+								cli.send(k + ":" + v + ":" + nodeTcpServer.getSocket().getInetAddress().getHostAddress() + ":" + nodeTcpServer.getSocket().getLocalPort());
+							}
+
+							printInfo("Successfully allocated needed resources on the local node, and informed the client.");
+
+						}
+
+					} else {
+
+						// 2. Send remainder of request to our subnet, divided by the amount of members of our subnet. (If we have a subnet)
+
+						// 3. Send remainder of request to our net, divided by the amount of members in our net.
+
+					}
+
+
 
 				}
 
