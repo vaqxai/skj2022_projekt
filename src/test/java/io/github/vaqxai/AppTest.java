@@ -91,13 +91,26 @@ class AppTest {
                 NetworkNode test1 = new NetworkNode("#1", 7000, null, 0, "A:3 B:1");
             }
         }).start();
-        
+
+        new Thread(new Runnable(){
+            public void run(){
         try{
-        Thread.sleep(500);
-        System.out.println("Starting network node #2");
-        NetworkNode test2 = new NetworkNode("#2", 7001, "localhost", 7000, "A:3 B:1");
-        } catch (InterruptedException e) {}
-        
+                Thread.sleep(2000);
+                System.out.println("Starting network node #2");
+                NetworkNode test2 = new NetworkNode("#2", 7001, "localhost", 7000, "A:3 B:1");
+                } catch (InterruptedException e) {}
+            }
+        }).start();
+
+        try{
+            Thread.sleep(3000);
+            System.out.println("Time's up! Terminating the network.");
+            TCPClient terminator = new TCPClient("localhost", 7000);
+            terminator.send("TERMINATE");
+        } catch (InterruptedException e) {
+            System.err.println(e);
+        }
+
     }
 
     @Test
