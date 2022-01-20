@@ -240,39 +240,15 @@ public class NetworkNode {
 			lock.lock();
 			try{
 
+				// Ignore empty/improperly structured messages
+
 				if(messageText[0] == null || messageText[1] == null || messageText[2] == null){
 					continue;
 				}
 
 				printInfo("INCOMING MSG: [" + messageText[1] + ":" + messageText[2] + "] > " + messageText[0]);
 
-				String command = "";
-				String commandArgs = "";
-				if(messageText[0].length() > 4){
-					command = messageText[0].substring(0, 3);
-					commandArgs = messageText[0].substring(4);
-				} else if (messageText[0].length() == 3) {
-					command = messageText[0];
-				}
-
-				if(messageFromNode[0]){
-
-					switch(command){
-						case "CON":
-							nodeConnected(messageText[1] + ":" + messageText[2]);
-							break;
-						case "ADD":
-							processAddCmd(commandArgs);
-							break;
-						case "DIR":
-							processRedirect(commandArgs);
-							break;
-						default:
-							// TODO: Unknown command
-							break;
-					}
-
-				}
+				// Control messages
 
 				if(messageText[0].equals("TERMINATE")){
 					// Propagate termination, like a virus.
@@ -291,6 +267,48 @@ public class NetworkNode {
 				if(messageText[0].startsWith("LOCK")){
 					String res = messageText[0].split(" ")[1];
 					this.resources.get(res.split(":")[0]).lock(Integer.parseInt(res.split(":")[1]));
+				}
+
+				// Regular messages/inter-node/client communications
+
+				// Parse the message into a command and arguments, to be executed
+
+				String command = "";
+				String commandArgs = "";
+				if(messageText[0].length() > 4){
+					command = messageText[0].substring(0, 3);
+					commandArgs = messageText[0].substring(4);
+				} else if (messageText[0].length() == 3) {
+					command = messageText[0];
+				}
+
+				// Inter-node communications
+
+				if(messageFromNode[0]){
+
+					switch(command){
+						case "CON": // New node connects to the network via us
+							nodeConnected(messageText[1] + ":" + messageText[2]);
+							break;
+						case "ADD": // We are adding a new node to our tables
+							processAddCmd(commandArgs);
+							break;
+						case "DIR": // We are being redirected
+							processRedirect(commandArgs);
+							break;
+						default: // We don't know
+							printInfo("Unknown Command");
+							break;
+					}
+
+				}
+
+				// Client-node communication, only communication to be received here, is a reservation request.
+
+				else {
+
+					// TODO: Client-node communication
+
 				}
 
 				messageText[0] = "ERROR";
