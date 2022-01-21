@@ -275,8 +275,6 @@ public class NetworkNode {
 	private void processReservation(String argsStr){
 
 		String[] args = argsStr.split(" ");
-
-		HashMap<String, Integer> resourcesToReserve = new HashMap<>();
 		String senderAddress = args[0];
 		String message = "RSS";
 
@@ -285,22 +283,8 @@ public class NetworkNode {
 			String resourceIdentifier = args[i].split(":")[0];
 			int resourceAmount = Integer.parseInt(args[i].split(":")[1]);
 
-			if(resources.get(resourceIdentifier).getAvailable() < resourceAmount){
-				message = "RSF";
-			} else {
-				resourcesToReserve.put(resourceIdentifier, resourceAmount);
-			}
+			resources.get(resourceIdentifier).reserve(args[1], resourceAmount);
 		}
-
-		for(Entry<String, Integer> res : resourcesToReserve.entrySet()){
-			resources.get(res.getKey()).reserve(args[1], res.getValue());
-		}
-
-		nodeUdpServer.send(
-			"RSS " + args[1] + " " + String.join(" ", Arrays.copyOfRange(args, 2, args.length)),
-			senderAddress.split(":")[0],
-			Integer.parseInt(senderAddress.split(":")[1])
-		);
 		
 	}
 
