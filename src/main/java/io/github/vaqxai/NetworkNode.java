@@ -305,19 +305,28 @@ public class NetworkNode {
 					}
 				}
 
-				// This was the first search and it was on outer addresses
+				HashMap<String, Integer> remainingResources = new HashMap<>();
+				for(String resourceString : resourcesNotFound.split(" ")){
+					remainingResources.put(resourceString.split(":")[0], Integer.parseInt(resourceString.split(":")[1]));
+				}
+
+				// This was the first search and it was on outer addresses, conduct second search on outer addresses
 				if(isFirstSearch && isSearchFromOuter) {
-					// Conduct second search on outer addresses
-					
-				// This was a second search on outer addresses
+					processLockSend(commandArray[1], commandArray[2].split("_")[0] + "_2", remainingResources, outerAddresses);
+					System.out.println("outer second");
+				// This was a second search on outer addresses, conduct first search on inner addresses
 				} else if(!isFirstSearch && isSearchFromOuter) {
-				// This was the first search on inner addresses (whether we had outer addresses or not)
+					processLockSend(commandArray[1], commandArray[2].split("_")[0] + "_1", remainingResources, innerAddresses);
+					System.out.println("inner first");
+				// This was the first search on inner addresses (whether we had outer addresses or not), conduct second search on inner addresses
 				} else if (isFirstSearch && isSearchFromInner) {
-					// TODO: Search inner addresses again, increment the search counter
+					processLockSend(commandArray[1], commandArray[2].split("_")[0] + "_2", remainingResources, innerAddresses);
+					System.out.println("inner second");
 				}
 				// This was the second search on inner addresses (final search)
 				else {
 					// TODO: We are done
+					// Send 
 				}
 
 			}
