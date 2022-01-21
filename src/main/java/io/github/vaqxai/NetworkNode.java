@@ -175,7 +175,8 @@ public class NetworkNode {
 		// partial request filled
 		if(lockedAmt < totalResourcesNeeded && outerAddresses.size() > 0) {
 
-			waitingSearches.put(orderID + "/" + senderAddress, String.valueOf(outerAddresses.size())); // waiting for n FINs to send to X
+			// we are always the search originator of the searches we start.
+			waitingSearches.put(orderID.split("_")[0] + "/" + getOwnAddressString(), String.valueOf(outerAddresses.size())); // waiting for n FINs to send to X
 
 			String remainderReceiver = outerAddresses.get((int)Math.round(Math.random() * (outerAddresses.size() - 1)));
 
@@ -205,9 +206,11 @@ public class NetworkNode {
 
 			for(Entry<String, String> res : partitionedResources.entrySet()){
 
-				nodeUdpServer.send("LOK " + originatorAddress + res.getValue(), res.getKey().split(":")[0], Integer.parseInt(res.getKey().split(":")[1]));
+				nodeUdpServer.send("LOK " + originatorAddress + " " + orderID + res.getValue(), res.getKey().split(":")[0], Integer.parseInt(res.getKey().split(":")[1]));
 
-				printInfo("Forwarded LOK to " + res.getKey() + " for " + res.getValue());
+				System.out.println(waitingSearches.toString());
+
+				printInfo("Forwarded LOK to " + res.getKey() + " for order " + orderID + " for resources" + res.getValue());
 
 			}
 
@@ -234,7 +237,7 @@ public class NetworkNode {
 			printInfo("Sent FIN to " + senderAddress + " for order " + orderID + " because a request was fully filled");
 
 		// nothing filled, or partially filled and can't forward. Search is finished, send back resources that couldn't be locked
-		} else if (waitingSearches.size() == 0 || Integer.parseInt(waitingSearches.get(orderID + "/" + senderAddress).split(" ")[0]) == 0) {
+		} else if (waitingSearches.size() == 0 || Integer.parseInt(waitingSearches.get(orderID.split("_")[0] + "/" + getOwnAddressString()).split(" ")[0]) == 0) {
 
 			String remainingResources = "";
 
@@ -290,14 +293,10 @@ public class NetworkNode {
 
 			String requestID = commandArray[2]; // requestID format: ClientID:OrderID_SearchNo
 
-			String responseAddress = commandArray[0];
-
-			// are we the originator of this request?
-			if (getOwnAddressString().equals(commandArray[1])){
-				responseAddress = commandArray[1];
-			}
-
-			String searchID = requestID + "/" + responseAddress;
+			// we are always the search originator for FILs that come to us.
+			String searchID = requestID.split("_")[0] + "/" + getOwnAddressString();
+			System.out.println(searchID);
+			System.out.println(waitingSearches.toString());
 			int searchesLeft = Integer.parseInt(waitingSearches.get(searchID).split(" ")[0]);
 			String resourcesNotFound = "";
 
@@ -368,7 +367,7 @@ public class NetworkNode {
 				else {
 
 					if(getOwnAddressString().equals(commandArray[1])){
-						System.out.println("Request for which we are an originator was finished");
+						printInfo("Request for which we are an originator was finished");
 						// All resources were locked
 						ResourceRequest rrq = requestsInProgress.get(requestID.split("_")[0]);
 
@@ -378,7 +377,7 @@ public class NetworkNode {
 							processRequestFail(rrq);
 						}
 					} else {
-						System.out.println("Request for which we are not an originator was finished");
+						printInfo("Request for which we are not an originator was finished");
 
 						String message = "FIN " + commandArray[1] + " " + commandArray[2];
 
@@ -387,12 +386,13 @@ public class NetworkNode {
 						}
 
 						nodeUdpServer.send(message, commandArray[1].split(":")[0], Integer.parseInt(commandArray[1].split(":")[1]));
+						System.out.println("Sending FIN with the following data: " + message);
 					}
 				}
 
 			}
 
-			System.out.println("Got FIN, waiting for " + searchesLeft + " more.");
+			printInfo("Got FIN, searchesWaiting: " + waitingSearches.toString());
 	}
 
 	private void processRedirect(String commandArgs){
@@ -484,6 +484,7 @@ public class NetworkNode {
 			int amountRemaining = requestedResources.get(orderPart.getKey());
 
 			int requestAmount = 0;
+			int messageAmount = addresses.size();
 			String remainderReceiver = "";
 
 			if (addresses.size() > 0){
@@ -493,13 +494,16 @@ public class NetworkNode {
 
 				remainderReceiver = addresses.get((int)Math.round(Math.random() * (addresses.size() - 1)));
 
+				if(requestAmount == 0) messageAmount = 1;
+
 			} else {
 
 				// Are you trying to send a lock to zero addresses?
 
 			}
 
-			waitingSearches.put(orderId + "/" + originator, String.valueOf(addresses.size())); // waiting for n FINs to send to X
+			// we are always the search originator if we are sending LOKs
+			waitingSearches.put(orderId.split("_")[0] + "/" + getOwnAddressString(), String.valueOf(messageAmount)); // waiting for n FINs to send to X
 
 			for(String address : addresses){
 				
@@ -517,17 +521,19 @@ public class NetworkNode {
 			
 		}
 
-		printInfo("Failed to allocate needed resources on the local node. Forwarding the request to the subnet.");
+		printInfo("Sending locks to the provided addresses.");
 
 		for(Entry<String, String> res : partitionedResources.entrySet()){
 
+				if(res.getValue().equals("")) continue;
+
 				nodeUdpServer.send(
-					"LOK " + getOwnAddressString() + " " + orderId + res.getValue(),
+					"LOK " + originator + " " + orderId + res.getValue(),
 					res.getKey().split(":")[0],
 					Integer.parseInt(res.getKey().split(":")[1])
 				);
 				
-				printInfo("Sent LOK to " + res.getKey() + " with values" + res.getValue());
+				printInfo("Sent LOK to " + res.getKey() + " with values'" + res.getValue() + "'");
 		}
 
 	}
