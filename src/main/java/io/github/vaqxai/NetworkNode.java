@@ -278,6 +278,7 @@ public class NetworkNode {
 
 		HashMap<String, Integer> resourcesToReserve = new HashMap<>();
 		String senderAddress = args[0];
+		String message = "RSS";
 
 		for(int i = 2; i < args.length; i++){
 
@@ -285,11 +286,7 @@ public class NetworkNode {
 			int resourceAmount = Integer.parseInt(args[i].split(":")[1]);
 
 			if(resources.get(resourceIdentifier).getAvailable() < resourceAmount){
-				nodeUdpServer.send(
-					"RSF " + String.join(" ", Arrays.copyOfRange(args, 2, args.length)),
-					senderAddress.split(":")[0],
-					Integer.parseInt(senderAddress.split(":")[1])
-				);
+				message = "RSF";
 			} else {
 				resourcesToReserve.put(resourceIdentifier, resourceAmount);
 			}
@@ -298,15 +295,13 @@ public class NetworkNode {
 		for(Entry<String, Integer> res : resourcesToReserve.entrySet()){
 			resources.get(res.getKey()).reserve(args[1], res.getValue());
 		}
+
+		nodeUdpServer.send(
+			"RSS " + args[1] + " " + String.join(" ", Arrays.copyOfRange(args, 2, args.length)),
+			senderAddress.split(":")[0],
+			Integer.parseInt(senderAddress.split(":")[1])
+		);
 		
-	}
-
-	private void processReservationSuccess(String commandArgs){
-		// TODO: Process reservation success (from this node to other nodes) and inform the client that it was a success
-	}
-
-	private void processReservationFail(String commandArgs){
-		// TODO: Process reservation fail (from this node to other nodes)
 	}
 
 	private void processRequestFail(ResourceRequest request){
@@ -534,11 +529,6 @@ public class NetworkNode {
 							processUnlock(commandArgs);
 						case "RES": // Someone wants to reserve our resources
 							processReservation(messageText[1] + ":" + messageText[2] + " " + commandArgs);
-						case "RSS": // (One of) Our reservation(s) succeeded
-							processReservationSuccess(commandArgs);
-						case "RSF": // Our reservation failed
-							processReservationFail(commandArgs);
-						default: // We don't know
 							break;
 					}
 
@@ -579,26 +569,7 @@ public class NetworkNode {
 					if(amountLocked[0] == request.order.values().stream().reduce(0, (a, b) -> a + b)){
 
 						request.status = RequestStatus.FINALIZED;
-						request.finalizeOrder(nodeUdpServer); // this will just send us unlocks, but that's fine
-
-						if(cli != null){
-
-							Socket sock = cli.getSocket();
-							String returnAddress = sock.getLocalAddress().getHostAddress();
-
-							for(Entry<String, Integer> orderEntry : request.getOrder().entrySet()){
-
-								cli.send(
-									orderEntry.getKey() + ":" +
-									orderEntry.getValue() + ":" +
-									returnAddress + ":" +
-									String.valueOf(tcpPort)
-								);
-							}
-
-							printInfo("Successfully allocated needed resources on the local node, and informed the client.");
-
-						}
+						request.finalizeOrder(nodeUdpServer); // this will just send us reservations
 
 					} else {
 						if(outerAddresses.size() == 0){
