@@ -179,6 +179,8 @@ public class NetworkNode {
 			String remainderReceiver = outerAddresses.get((int)Math.round(Math.random() * (outerAddresses.size() - 1)));
 
 			// Forward LOKs
+
+			HashMap<String, String> partitionedResources = new HashMap<>();
 			
 			for(Entry<String, Integer> res : orderParts.entrySet()){
 
@@ -190,10 +192,21 @@ public class NetworkNode {
 					if(address.equals(remainderReceiver)){
 						amountToAsk += amountRemaining;
 					}
-					nodeUdpServer.send("LOK " + originatorAddress + " " + orderID + " " + res.getKey() + ":" + amountToAsk, address.split(":")[0], Integer.parseInt(address.split(":")[1]));
 
-					printInfo("Forwarded LOK to " + address + " for " + res.getKey() + ":" + amountToAsk);
+					if(!partitionedResources.containsKey(address))
+						partitionedResources.put(address, "");
+					
+					partitionedResources.replace(address, partitionedResources.get(address) + " " + res.getKey() + ":" + amountToAsk);
+
 				}
+
+			}
+
+			for(Entry<String, String> res : partitionedResources.entrySet()){
+
+				nodeUdpServer.send("LOK " + originatorAddress + " " + res.getValue(),res.getKey().split(":")[0], Integer.parseInt(res.getKey().split(":")[1]));
+
+				printInfo("Forwarded LOK to " + res.getKey() + " for " + res.getValue());
 
 			}
 
@@ -453,6 +466,8 @@ public class NetworkNode {
 
 	public void processLockSend(String originator, String orderId, HashMap<String, Integer> requestedResources, ArrayList<String> addresses){
 
+		HashMap<String, String> partitionedResources = new HashMap<>();
+
 		for (Entry<String, Integer> orderPart : requestedResources.entrySet()){
 
 			int amountRemaining = requestedResources.get(orderPart.getKey());
@@ -480,16 +495,26 @@ public class NetworkNode {
 				int amountToRequest = requestAmount;
 				if(address.equals(remainderReceiver)) amountToRequest += amountRemaining;
 
-				nodeUdpServer.send(
-					"LOK " + getOwnAddressString() + " " + orderId + " " + orderPart.getKey() + ":" + amountToRequest,
-					address.split(":")[0],
-					Integer.parseInt(address.split(":")[1])
-				);
+				if(!partitionedResources.containsKey(address))
+					partitionedResources.put(address, "");
+
+				partitionedResources.replace(address, partitionedResources.get(address) + " " + orderPart.getKey() + ":" + amountToRequest);
 
 			}
-
-			printInfo("Failed to allocate needed resources on the local node. Forwarding the request to the subnet.");
 			
+		}
+
+		printInfo("Failed to allocate needed resources on the local node. Forwarding the request to the subnet.");
+
+		for(Entry<String, String> res : partitionedResources.entrySet()){
+
+				nodeUdpServer.send(
+					"LOK " + getOwnAddressString() + " " + orderId + " " + res.getValue(),
+					res.getKey().split(":")[0],
+					Integer.parseInt(res.getKey().split(":")[1])
+				);
+				
+				printInfo("Sent LOK to " + res.getKey() + " with values " + res.getValue());
 		}
 
 	}
