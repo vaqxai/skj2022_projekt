@@ -10,6 +10,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Collectors;
 
 public class NetworkNode {
 
@@ -178,6 +179,7 @@ public class NetworkNode {
 			String remainderReceiver = outerAddresses.get((int)Math.round(Math.random() * (outerAddresses.size() - 1)));
 
 			// Forward LOKs
+			
 			for(Entry<String, Integer> res : orderParts.entrySet()){
 
 				int amountRemaining = res.getValue() % outerAddresses.size();
@@ -219,7 +221,16 @@ public class NetworkNode {
 
 		}else if (lockedAmt == 0) { // nothing filled, and can't forward. Search is finished, send back resources that couldn't be locked
 
-			nodeUdpServer.send("FIN " + originatorAddress + " " + orderID + " " + Arrays.copyOfRange(commandArray, 3, commandArray.length), senderAddress.split(":")[0], Integer.parseInt(senderAddress.split(":")[1]));
+			nodeUdpServer.send(
+				"FIN " +
+				originatorAddress +
+				" " +
+				orderID +
+				" " +
+				Arrays.stream(commandArray, 3, commandArray.length).collect(Collectors.joining(" ")),
+				senderAddress.split(":")[0],
+				Integer.parseInt(senderAddress.split(":")[1])
+			);
 
 			printInfo("Sent FIN to " + senderAddress + " for order " + orderID + " because a request could not be filled or forwarded");
 
@@ -265,15 +276,23 @@ public class NetworkNode {
 				responseAddress = commandArray[1];
 			}
 
-			int searchesLeft = Integer.parseInt(waitingSearches.get(requestID + "/" + responseAddress).split(" ")[0]);
+			String searchID = requestID + "/" + responseAddress;
+			int searchesLeft = Integer.parseInt(waitingSearches.get(searchID).split(" ")[0]);
 			String resourcesNotFound = "";
 
 			// Are there any resources left to be found
-			if(waitingSearches.get(requestID + "/" + responseAddress).split(" ").length > 1) {
-				resourcesNotFound = waitingSearches.get(requestID + "/" + responseAddress).split(" ")[1];
-				waitingSearches.replace(requestID + "/" + responseAddress, searchesLeft - 1 + " " + resourcesNotFound); // we are waiting for one less denial/success for our own request
+			if(commandArray.length > 3) {
+				if(waitingSearches.get(searchID).split(" ").length > 1)
+					resourcesNotFound = waitingSearches.get(searchID).split(" ")[1];
+				else // Add resources not found to waiting searches
+					waitingSearches.replace(
+						searchID, waitingSearches.get(searchID) +
+						" " +
+						Arrays.stream(commandArray, 3, commandArray.length).collect(Collectors.joining(" "))
+					);
+				waitingSearches.replace(searchID, searchesLeft - 1 + " " + resourcesNotFound); // we are waiting for one less denial/success for our own request
 			} else {
-				waitingSearches.replace(requestID + "/" + responseAddress, searchesLeft - 1 + ""); // we are waiting for one less denial/success for our own request
+				waitingSearches.replace(searchID, searchesLeft - 1 + ""); // we are waiting for one less denial/success for our own request
 			}
 			searchesLeft -= 1;
 

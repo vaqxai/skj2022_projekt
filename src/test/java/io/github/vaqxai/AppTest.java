@@ -362,7 +362,7 @@ class AppTest {
             Thread.sleep(200);
             TCPClient queryClient = new TCPClient("192.168.1.15", 7000);
 
-            queryClient.send("Klient1 C:4 Z:8");
+            queryClient.send("Klient1 C:4 Z:8 D:1");
             Thread.sleep(1000);
             queryClient.get();
             System.out.println("[CLIENT GOT]: " + queryClient.get());
