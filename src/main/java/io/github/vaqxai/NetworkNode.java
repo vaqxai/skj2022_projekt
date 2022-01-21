@@ -308,15 +308,7 @@ public class NetworkNode {
 				// This was the first search and it was on outer addresses
 				if(isFirstSearch && isSearchFromOuter) {
 					// Conduct second search on outer addresses
-					for(String address : outerAddresses){
-
-						nodeUdpServer.send(
-							"LOK " + commandArray[1] + " " + commandArray[2].split("_")[0] + "_2 " + resourcesNotFound,
-							commandArray[0].split(":")[0],
-							Integer.parseInt(commandArray[0].split(":")[1])
-						);
-
-					}
+					
 				// This was a second search on outer addresses
 				} else if(!isFirstSearch && isSearchFromOuter) {
 				// This was the first search on inner addresses (whether we had outer addresses or not)
@@ -401,7 +393,7 @@ public class NetworkNode {
 	}
 
 	public void processLockSend(ResourceRequest request, ArrayList<String> addresses){
-		processLockSend(request.originator, String.valueOf(request.orderId), request.getOrderRemaining(), addresses);
+		processLockSend(request.originator, String.valueOf(request.getIdentifier()) + "_1", request.getOrderRemaining(), addresses);
 	}
 
 	public void processLockSend(String originator, String orderId, HashMap<String, Integer> requestedResources, ArrayList<String> addresses){
@@ -432,7 +424,7 @@ public class NetworkNode {
 				if(address.equals(remainderReceiver)) amountToRequest += amountRemaining;
 
 				nodeUdpServer.send(
-					"LOK " + getOwnAddressString() + " " + originator + ":" + orderId + "_" + 1 + " " + orderPart.getKey() + ":" + amountToRequest,
+					"LOK " + getOwnAddressString() + " " + originator + ":" + orderId + " " + orderPart.getKey() + ":" + amountToRequest,
 					address.split(":")[0],
 					Integer.parseInt(address.split(":")[1])
 				);
