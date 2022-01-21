@@ -11,6 +11,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
+import javax.annotation.Resource;
+
 public class NetworkNode {
 
 	public final String identifier;
@@ -396,6 +398,10 @@ public class NetworkNode {
 		request.getClientHandler().send("FAILED");
 		request.release(nodeUdpServer);
 		request.status = RequestStatus.DENIED;
+	}
+
+	public void processLockSend(ResourceRequest request, ArrayList<String> addresses){
+		processLockSend(request.originator, String.valueOf(request.orderId), request.getOrderRemaining(), addresses);
 	}
 
 	public void processLockSend(String originator, String orderId, HashMap<String, Integer> requestedResources, ArrayList<String> addresses){
