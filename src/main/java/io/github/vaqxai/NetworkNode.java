@@ -5,6 +5,8 @@ import java.net.*;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.AbstractMap.SimpleEntry;
 import java.util.Map.Entry;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -148,7 +150,6 @@ public class NetworkNode {
 		String originatorAddress = commandArray[1];
 		String orderID = commandArray[2];
 
-
 		String[] orderContents = Arrays.copyOfRange(commandArray, 3, commandArray.length);
 		HashMap<String, Integer> orderParts = new HashMap<>();
 		int totalResourcesNeeded = 0;
@@ -204,7 +205,7 @@ public class NetworkNode {
 
 			for(Entry<String, String> res : partitionedResources.entrySet()){
 
-				nodeUdpServer.send("LOK " + originatorAddress + " " + res.getValue(),res.getKey().split(":")[0], Integer.parseInt(res.getKey().split(":")[1]));
+				nodeUdpServer.send("LOK " + originatorAddress + res.getValue(), res.getKey().split(":")[0], Integer.parseInt(res.getKey().split(":")[1]));
 
 				printInfo("Forwarded LOK to " + res.getKey() + " for " + res.getValue());
 
@@ -216,7 +217,7 @@ public class NetworkNode {
 			// LKR to originator
 			String lkrMessage = "LKR " + originatorAddress + " " + orderID + " ";
 			for(Entry<String, Integer> orderPart : orderParts.entrySet()){
-				lkrMessage += orderPart.getKey() + ":" + (originalParts.get(orderPart.getKey()) - orderPart.getValue());
+				lkrMessage += orderPart.getKey() + ":" + (originalParts.get(orderPart.getKey()) - orderPart.getValue()) + " ";
 			}
 
 			nodeUdpServer.send(lkrMessage, originatorAddress.split(":")[0], Integer.parseInt(originatorAddress.split(":")[1]));
@@ -232,15 +233,22 @@ public class NetworkNode {
 
 			printInfo("Sent FIN to " + senderAddress + " for order " + orderID + " because a request was fully filled");
 
-		}else if (lockedAmt == 0) { // nothing filled, and can't forward. Search is finished, send back resources that couldn't be locked
+		// nothing filled, or partially filled and can't forward. Search is finished, send back resources that couldn't be locked
+		} else if (waitingSearches.size() == 0 || Integer.parseInt(waitingSearches.get(orderID + "/" + senderAddress).split(" ")[0]) == 0) {
+
+			String remainingResources = "";
+
+			for(Entry<String, Integer> orderPart : orderParts.entrySet()){
+				if(orderPart.getValue() > 0)
+					remainingResources += " " + orderPart.getKey() + ":" + orderPart.getValue();
+			}
 
 			nodeUdpServer.send(
 				"FIN " +
 				originatorAddress +
 				" " +
 				orderID +
-				" " +
-				Arrays.stream(commandArray, 3, commandArray.length).collect(Collectors.joining(" ")),
+				remainingResources,
 				senderAddress.split(":")[0],
 				Integer.parseInt(senderAddress.split(":")[1])
 			);
@@ -295,14 +303,13 @@ public class NetworkNode {
 
 			// Are there any resources left to be found
 			if(commandArray.length > 3) {
-				if(waitingSearches.get(searchID).split(" ").length > 1)
-					resourcesNotFound = waitingSearches.get(searchID).split(" ")[1];
-				else // Add resources not found to waiting searches
+				if(waitingSearches.get(searchID).split(" ").length == 1) // Add resources not found to waiting searches
 					waitingSearches.replace(
 						searchID, waitingSearches.get(searchID) +
 						" " +
 						Arrays.stream(commandArray, 3, commandArray.length).collect(Collectors.joining(" "))
 					);
+				resourcesNotFound += waitingSearches.get(searchID).split(" ")[1];
 				waitingSearches.replace(searchID, searchesLeft - 1 + " " + resourcesNotFound); // we are waiting for one less denial/success for our own request
 			} else {
 				waitingSearches.replace(searchID, searchesLeft - 1 + ""); // we are waiting for one less denial/success for our own request
@@ -368,7 +375,7 @@ public class NetworkNode {
 						if(resourcesNotFound.equals("")){
 							rrq.finalizeOrder(nodeUdpServer);
 						} else {
-							rrq.release(nodeUdpServer);
+							processRequestFail(rrq);
 						}
 					} else {
 						System.out.println("Request for which we are not an originator was finished");
@@ -384,6 +391,8 @@ public class NetworkNode {
 				}
 
 			}
+
+			System.out.println("Got FIN, waiting for " + searchesLeft + " more.");
 	}
 
 	private void processRedirect(String commandArgs){
@@ -413,6 +422,8 @@ public class NetworkNode {
 		for(int i = 3; i < commandArray.length; i++){
 			String resourceIdentifier = commandArray[i].split(":")[0];
 			int resourceAmount = Integer.parseInt(commandArray[i].split(":")[1]);
+
+			if(resourceAmount == 0) continue;
 
 			rrq.addLockedResource(commandArray[0], resourceIdentifier, resourceAmount);
 			printInfo(resourceAmount + " of resource " + resourceIdentifier + " was locked on " + commandArray[0] + " for request ID: " + rrq.getIdentifier());
@@ -498,6 +509,8 @@ public class NetworkNode {
 				if(!partitionedResources.containsKey(address))
 					partitionedResources.put(address, "");
 
+				if(amountToRequest == 0) continue;
+
 				partitionedResources.replace(address, partitionedResources.get(address) + " " + orderPart.getKey() + ":" + amountToRequest);
 
 			}
@@ -509,12 +522,12 @@ public class NetworkNode {
 		for(Entry<String, String> res : partitionedResources.entrySet()){
 
 				nodeUdpServer.send(
-					"LOK " + getOwnAddressString() + " " + orderId + " " + res.getValue(),
+					"LOK " + getOwnAddressString() + " " + orderId + res.getValue(),
 					res.getKey().split(":")[0],
 					Integer.parseInt(res.getKey().split(":")[1])
 				);
 				
-				printInfo("Sent LOK to " + res.getKey() + " with values " + res.getValue());
+				printInfo("Sent LOK to " + res.getKey() + " with values" + res.getValue());
 		}
 
 	}
@@ -540,12 +553,15 @@ public class NetworkNode {
 
 		ExecutorService execSvc = Executors.newFixedThreadPool(2);
 
-		String[] messageText = new String[3];
-		boolean[] messageFromNode = new boolean[1];
+		//String[] messageText = new String[3];
+		//boolean[] messageFromNode = new boolean[1];
 
 		final ReentrantLock lock = new ReentrantLock();
 		final Condition messageReceived = lock.newCondition();
 		final Condition messageProcessed = lock.newCondition();
+		final Condition queueNotEmpty = lock.newCondition();
+
+		LinkedList<Entry<String[], Boolean>> messageQueue = new LinkedList<>();
 
 		nodeUdpServer = new NodeUDPServer(tcpPort);
 		nodeTcpServer = new TCPServer(tcpPort);
@@ -559,18 +575,24 @@ public class NetworkNode {
 		// Client message callback
 
 		nodeTcpServer.setAutoResponse((sock, message) -> {
-			try{
+
+
+			String[] tempMessage = new String[3];
+
+			tempMessage[0] = message;
+			tempMessage[1] = "" + sock.getInetAddress();
+			tempMessage[2] = "" + sock.getPort();
+
+			boolean queueWasEmpty = messageQueue.isEmpty();
+
+			messageQueue.add(new SimpleEntry<String[], Boolean>(tempMessage, false));
+
+			if(queueWasEmpty){
 				lock.lock();
-				messageText[0] = message;
-				messageText[1] = "" + sock.getInetAddress();
-				messageText[2] = "" + sock.getPort();
-				messageFromNode[0] = false;
-				messageReceived.signalAll();
-				messageProcessed.await();
+				queueNotEmpty.signalAll();
 				lock.unlock();
-			} catch (InterruptedException e){
-				System.err.println(e);
 			}
+
 			return "";
 		});
 
@@ -578,23 +600,23 @@ public class NetworkNode {
 
 		nodeUdpServer.setCallback((packet) -> {
 
-			try{
-			lock.lock();
 			InetAddress incomingAdddress = packet.getAddress();
+
+			String[] tempMessage  = new String[3];
 
 			String receivedStr = new String(packet.getData(), 0, packet.getLength());
 
-			messageText[0] = receivedStr;
-			messageText[1] = incomingAdddress.getHostAddress();
-			messageText[2] = "" + packet.getPort();
-			messageFromNode[0] = true;
+			tempMessage[0] = receivedStr;
+			tempMessage[1] = incomingAdddress.getHostAddress();
+			tempMessage[2] = "" + packet.getPort();
 
-			messageReceived.signalAll();
-			//messageProcessed.await();
-			lock.unlock();
+			boolean queueWasEmpty = messageQueue.isEmpty();
 
-			} catch (Exception e){
-				System.err.println(e);
+			messageQueue.add(new SimpleEntry<String[], Boolean>(tempMessage, true));
+
+			if(queueWasEmpty){
+				lock.lock();
+				queueNotEmpty.signalAll();
 				lock.unlock();
 			}
 
@@ -617,154 +639,156 @@ public class NetworkNode {
 		printInfo("Started!");
 
 		while(true){
-			lock.lock();
+			if(messageQueue.isEmpty())
 			try{
-
-				// Ignore empty/improperly structured messages
-
-				if(messageText[0] == null || messageText[1] == null || messageText[2] == null){
-					continue;
-				}
-
-				printInfo("INCOMING MSG: [" + messageText[1] + ":" + messageText[2] + "] > " + messageText[0]);
-
-				// Control messages
-
-				if(messageText[0].equals("TERMINATE")){
-					// Propagate termination, like a virus.
-					for(String addrStr : outerAddresses){
-						nodeUdpServer.send("TERMINATE", addrStr.split(":")[0], Integer.parseInt(addrStr.split(":")[1]));
-					}
-					for(String addrStr : innerAddresses){
-						nodeUdpServer.send("TERMINATE", addrStr.split(":")[0], Integer.parseInt(addrStr.split(":")[1]));
-					}
-					break;
-				};
-
-				// Debug/Test commands
-
-				if(messageText[0].equals("RESOURCES")) printResources();
-
-				if(messageText[0].startsWith("LOCK")){
-					String res = messageText[0].split(" ")[1];
-					this.resources.get(res.split(":")[0]).lock(Integer.parseInt(res.split(":")[1]));
-				}
-
-				// Regular messages/inter-node/client communications
-
-				// Parse the message into a command and arguments, to be executed
-
-				String command = "";
-				String commandArgs = "";
-				if(messageText[0].length() > 3){
-					command = messageText[0].substring(0, 3);
-					commandArgs = messageText[0].substring(4);
-				} else if (messageText[0].length() == 3) {
-					command = messageText[0];
-				}
-
-				// Inter-node communications
-
-				if(messageFromNode[0]){
-
-					switch(command){
-						case "HON"://K // New node connects to the network (honks to us) via us
-							nodeConnected(messageText[1] + ":" + messageText[2]);
-							break;
-						case "ADD": // We are adding a new node to our tables
-							processAddCmd(commandArgs);
-							break;
-						case "DIR": // We are being redirected
-							processRedirect(commandArgs);
-							break;
-						case "LOK": // Someone requests our resources
-							processLock(messageText[1] + ":" + messageText[2] + " " + commandArgs);
-							break;
-						case "LKR": // Someone responded to one of our locks
-							processLockResponse(messageText[1] + ":" + messageText[2] + " " + commandArgs);
-							break;
-						case "FIN": // Someone ended their search
-							requestSearchEnded(messageText[1] + ":" + messageText[2] + " " + commandArgs);
-							break;
-						case "ULK": // Someone wants to unlock our resources
-							processUnlock(commandArgs);
-							break;
-						case "RES": // Someone wants to reserve our resources
-							processReservation(messageText[1] + ":" + messageText[2] + " " + commandArgs);
-							break;
-					}
-
-				}
-
-				// Client-node communication, only communication to be received here, is a reservation request.
-
-				else if (messageText[0].split(" ").length > 1) {
-
-					String[] clientMessageArray = messageText[0].split(" ");
-
-					ClientHandler cli = null;
-
-					for(ClientHandler client : nodeTcpServer.getAllClients()){
-						Socket sock = client.getSocket();
-						if(String.valueOf(sock.getInetAddress()).equals(messageText[1]) &&
-						String.valueOf(sock.getPort()).equals(messageText[2])){
-							cli = client;
-							break;
-						}
-					}
-
-					String clientIdentifier = clientMessageArray[0];
-					String[] requestArray = Arrays.copyOfRange(clientMessageArray, 1, clientMessageArray.length);
-					ResourceRequest request = new ResourceRequest(clientIdentifier, cli, requestArray);
-					request.status = RequestStatus.PROCESSING;
-
-					// 1. Check if we have the resources they want ourselves, and respond immediately if we do, block all we can if we don't.
-
-					int[] amountLocked = {0};
-
-					this.resources.values().stream().filter(res -> {
-						return request.getOrder().keySet().contains(res.getIdentifier());
-					}).forEach(res -> {
-						int tempLockedAmt = res.lock(request.getOrder().get(res.getIdentifier()));
-						printInfo(tempLockedAmt + " of resource " + res.getIdentifier() + " was locked on the local node for request ID: " + request.getIdentifier());
-						amountLocked[0] += tempLockedAmt;
-						request.addLockedResource(getOwnAddressString(), res.getIdentifier(), tempLockedAmt);
-					});
-
-					if(amountLocked[0] == request.order.values().stream().reduce(0, (a, b) -> a + b)){
-
-						request.status = RequestStatus.FINALIZED;
-						request.finalizeOrder(nodeUdpServer); // this will just send us reservations
-						printInfo("Order " + request.getIdentifier() + " placed with this node was successfully completed and allocated.");
-
-					} else {
-						if(outerAddresses.size() == 0 && innerAddresses.size() > 0){
-							requestsInProgress.put(request.getIdentifier(), request);
-							processLockSend(request, innerAddresses);
-						} else if (outerAddresses.size() > 0) {
-							requestsInProgress.put(request.getIdentifier(), request);
-							processLockSend(request, outerAddresses);
-						} else {
-							processRequestFail(request);
-						}
-					}
-
-
-
-				}
-
-				messageText[0] = "ERROR";
-
-				messageProcessed.signalAll();
-
-				messageReceived.await();
-
+				lock.lock();
+				queueNotEmpty.await();
 			} catch (InterruptedException e) {
-				System.err.println(e);
-				break;
+
 			} finally {
 				lock.unlock();
 			}
+
+			Entry<String[], Boolean> queueItem = messageQueue.remove();
+			String[] messageText = queueItem.getKey();
+			boolean messageFromNode = queueItem.getValue();
+
+			// Ignore empty/improperly structured messages
+
+			if(messageText[0] == null || messageText[1] == null || messageText[2] == null){
+				continue;
+			}
+
+			printInfo("INCOMING MSG: [" + messageText[1] + ":" + messageText[2] + "] > " + messageText[0]);
+
+			// Control messages
+
+			if(messageText[0].equals("TERMINATE")){
+				// Propagate termination, like a virus.
+				for(String addrStr : outerAddresses){
+					nodeUdpServer.send("TERMINATE", addrStr.split(":")[0], Integer.parseInt(addrStr.split(":")[1]));
+				}
+				for(String addrStr : innerAddresses){
+					nodeUdpServer.send("TERMINATE", addrStr.split(":")[0], Integer.parseInt(addrStr.split(":")[1]));
+				}
+				break;
+			};
+
+			// Debug/Test commands
+
+			if(messageText[0].equals("RESOURCES")) printResources();
+
+			if(messageText[0].startsWith("LOCK")){
+				String res = messageText[0].split(" ")[1];
+				this.resources.get(res.split(":")[0]).lock(Integer.parseInt(res.split(":")[1]));
+			}
+
+			// Regular messages/inter-node/client communications
+
+			// Parse the message into a command and arguments, to be executed
+
+			String command = "";
+			String commandArgs = "";
+			if(messageText[0].length() > 3){
+				command = messageText[0].substring(0, 3);
+				commandArgs = messageText[0].substring(4);
+			} else if (messageText[0].length() == 3) {
+				command = messageText[0];
+			}
+
+			// Inter-node communications
+
+			if(messageFromNode){
+
+				switch(command){
+					case "HON"://K // New node connects to the network (honks to us) via us
+						nodeConnected(messageText[1] + ":" + messageText[2]);
+						break;
+					case "ADD": // We are adding a new node to our tables
+						processAddCmd(commandArgs);
+						break;
+					case "DIR": // We are being redirected
+						processRedirect(commandArgs);
+						break;
+					case "LOK": // Someone requests our resources
+						processLock(messageText[1] + ":" + messageText[2] + " " + commandArgs);
+						break;
+					case "LKR": // Someone responded to one of our locks
+						processLockResponse(messageText[1] + ":" + messageText[2] + " " + commandArgs);
+						break;
+					case "FIN": // Someone ended their search
+						requestSearchEnded(messageText[1] + ":" + messageText[2] + " " + commandArgs);
+						break;
+					case "ULK": // Someone wants to unlock our resources
+						processUnlock(commandArgs);
+						break;
+					case "RES": // Someone wants to reserve our resources
+						processReservation(messageText[1] + ":" + messageText[2] + " " + commandArgs);
+						break;
+				}
+
+			}
+
+			// Client-node communication, only communication to be received here, is a reservation request.
+
+			else if (messageText[0].split(" ").length > 1) {
+
+				String[] clientMessageArray = messageText[0].split(" ");
+
+				ClientHandler cli = null;
+
+				for(ClientHandler client : nodeTcpServer.getAllClients()){
+					Socket sock = client.getSocket();
+					if(String.valueOf(sock.getInetAddress()).equals(messageText[1]) &&
+					String.valueOf(sock.getPort()).equals(messageText[2])){
+						cli = client;
+						break;
+					}
+				}
+
+				String clientIdentifier = clientMessageArray[0];
+				String[] requestArray = Arrays.copyOfRange(clientMessageArray, 1, clientMessageArray.length);
+				ResourceRequest request = new ResourceRequest(clientIdentifier, cli, requestArray);
+				request.status = RequestStatus.PROCESSING;
+
+				// 1. Check if we have the resources they want ourselves, and respond immediately if we do, block all we can if we don't.
+
+				int[] amountLocked = {0};
+
+				this.resources.values().stream().filter(res -> {
+					return request.getOrder().keySet().contains(res.getIdentifier());
+				}).forEach(res -> {
+					int tempLockedAmt = res.lock(request.getOrder().get(res.getIdentifier()));
+					printInfo(tempLockedAmt + " of resource " + res.getIdentifier() + " was locked on the local node for request ID: " + request.getIdentifier());
+					amountLocked[0] += tempLockedAmt;
+					request.addLockedResource(getOwnAddressString(), res.getIdentifier(), tempLockedAmt);
+				});
+
+				if(amountLocked[0] == request.order.values().stream().reduce(0, (a, b) -> a + b)){
+
+					request.status = RequestStatus.FINALIZED;
+					request.finalizeOrder(nodeUdpServer); // this will just send us reservations
+					printInfo("Order " + request.getIdentifier() + " placed with this node was successfully completed and allocated.");
+
+				} else {
+					if(outerAddresses.size() == 0 && innerAddresses.size() > 0){
+						requestsInProgress.put(request.getIdentifier(), request);
+						processLockSend(request, innerAddresses);
+					} else if (outerAddresses.size() > 0) {
+						requestsInProgress.put(request.getIdentifier(), request);
+						processLockSend(request, outerAddresses);
+					} else {
+						processRequestFail(request);
+					}
+				}
+
+
+
+			}
+
+			messageText[0] = "ERROR";
+
+			System.out.println("Waiting for next message...");
 		}
 
 		printInfo("END");
