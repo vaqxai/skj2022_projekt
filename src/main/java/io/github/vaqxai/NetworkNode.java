@@ -29,7 +29,6 @@ public class NetworkNode {
 	ArrayList<String> outerAddresses = new ArrayList<>();
 
 	HashMap<String, NetworkResource> resources = new HashMap<>();
-	HashMap<String, NetworkResource> allocatedResources = new HashMap<>();
 
 	HashMap<String, Integer> waitingDenials = new HashMap<>();
 
@@ -273,8 +272,33 @@ public class NetworkNode {
 		// TODO: Process unlock
 	}
 
-	private void processReservation(String commandArgs){
-		// TODO: Process reserve (from other nodes on this node, not request finalization stuff)
+	private void processReservation(String argsStr){
+
+		String[] args = argsStr.split(" ");
+
+		HashMap<String, Integer> resourcesToReserve = new HashMap<>();
+		String senderAddress = args[0];
+
+		for(int i = 2; i < args.length; i++){
+
+			String resourceIdentifier = args[i].split(":")[0];
+			int resourceAmount = Integer.parseInt(args[i].split(":")[1]);
+
+			if(resources.get(resourceIdentifier).getAvailable() < resourceAmount){
+				nodeUdpServer.send(
+					"RSF " + String.join(" ", Arrays.copyOfRange(args, 2, args.length)),
+					senderAddress.split(":")[0],
+					Integer.parseInt(senderAddress.split(":")[1])
+				);
+			} else {
+				resourcesToReserve.put(resourceIdentifier, resourceAmount);
+			}
+		}
+
+		for(Entry<String, Integer> res : resourcesToReserve.entrySet()){
+			resources.get(res.getKey()).reserve(args[1], res.getValue());
+		}
+		
 	}
 
 	private void processReservationSuccess(String commandArgs){
@@ -299,10 +323,21 @@ public class NetworkNode {
 
 			int amountRemaining = requestedResources.get(orderPart.getKey());
 
-			int requestAmount = (amountRemaining - (amountRemaining % addresses.size()) ) / addresses.size();
-			amountRemaining = amountRemaining % addresses.size();
+			int requestAmount = 0;
+			String remainderReceiver = "";
 
-			String remainderReceiver = addresses.get((int)Math.round(Math.random() * (addresses.size() - 1)));
+			if (addresses.size() > 0){
+
+				requestAmount = (amountRemaining - (amountRemaining % addresses.size()) ) / addresses.size();
+				amountRemaining = amountRemaining % addresses.size();
+
+				remainderReceiver = addresses.get((int)Math.round(Math.random() * (addresses.size() - 1)));
+
+			} else {
+
+				// Are you trying to send a lock to zero addresses?
+
+			}
 
 			for(String address : addresses){
 
@@ -498,7 +533,7 @@ public class NetworkNode {
 						case "ULK": // Someone wants to unlock our resources
 							processUnlock(commandArgs);
 						case "RES": // Someone wants to reserve our resources
-							processReservation(commandArgs);
+							processReservation(messageText[1] + ":" + messageText[2] + " " + commandArgs);
 						case "RSS": // (One of) Our reservation(s) succeeded
 							processReservationSuccess(commandArgs);
 						case "RSF": // Our reservation failed
@@ -537,7 +572,8 @@ public class NetworkNode {
 					this.resources.values().stream().filter(res -> {
 						return request.getOrder().keySet().contains(res.getIdentifier());
 					}).forEach(res -> {
-						amountLocked[0] += res.lock(res.getAvailable());
+						amountLocked[0] += res.lock(request.getOrder().get(res.getIdentifier()));
+						request.addLockedResource("localhost:" + nodeUdpServer.getSocket().getLocalPort(), res.getIdentifier(), amountLocked[0]);
 					});
 
 					if(amountLocked[0] == request.order.values().stream().reduce(0, (a, b) -> a + b)){
@@ -547,12 +583,11 @@ public class NetworkNode {
 
 						if(cli != null){
 
-							cli.send("ALLOCATED");
-
 							Socket sock = cli.getSocket();
 							String returnAddress = sock.getLocalAddress().getHostAddress();
 
 							for(Entry<String, Integer> orderEntry : request.getOrder().entrySet()){
+
 								cli.send(
 									orderEntry.getKey() + ":" +
 									orderEntry.getValue() + ":" +

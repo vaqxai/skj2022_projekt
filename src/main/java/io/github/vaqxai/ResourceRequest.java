@@ -132,7 +132,7 @@ public class ResourceRequest {
 		if(!resourceMap.containsKey(resourceType))
 			resourceMap.put(resourceType, 0);
 		
-		resourceMap.replace(resourceType, resourceMap.get(resourceType) + 1);
+		resourceMap.replace(resourceType, resourceMap.get(resourceType) + resourceAmount);
 	}
 
 	/**
@@ -165,7 +165,7 @@ public class ResourceRequest {
 	 * @param server The UDP Server that will send the messages.
 	 */
 	public void finalizeOrder(UDPServer server){
-		sendToAllLockedNodes(server, "RES");
+		sendToAllLockedNodes(server, "RES " + originator);
 	}
 
 	/**
