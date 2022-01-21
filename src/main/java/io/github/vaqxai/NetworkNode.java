@@ -557,8 +557,6 @@ public class NetworkNode {
 		//boolean[] messageFromNode = new boolean[1];
 
 		final ReentrantLock lock = new ReentrantLock();
-		final Condition messageReceived = lock.newCondition();
-		final Condition messageProcessed = lock.newCondition();
 		final Condition queueNotEmpty = lock.newCondition();
 
 		LinkedList<Entry<String[], Boolean>> messageQueue = new LinkedList<>();
@@ -615,6 +613,7 @@ public class NetworkNode {
 			messageQueue.add(new SimpleEntry<String[], Boolean>(tempMessage, true));
 
 			if(queueWasEmpty){
+				System.out.println("Queue was empty!");
 				lock.lock();
 				queueNotEmpty.signalAll();
 				lock.unlock();
@@ -787,8 +786,6 @@ public class NetworkNode {
 			}
 
 			messageText[0] = "ERROR";
-
-			System.out.println("Waiting for next message...");
 		}
 
 		printInfo("END");
