@@ -11,6 +11,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
+import javax.naming.directory.SearchResult;
+
 public class NetworkNode {
 
 	public final String identifier;
@@ -232,6 +234,99 @@ public class NetworkNode {
 
 	}
 
+	private void processLockResponse(String commandArgs, boolean searchEnded){
+
+		String[] commandArray = commandArgs.split(" ");
+		ResourceRequest request = requestsInProgress.get(commandArray[2].split("_")[0]);
+
+
+		if (searchEnded) {
+			String requestID = commandArray[2].split("_")[0];
+			waitingDenials.replace(requestID, waitingDenials.get(requestID) - 1);
+
+			// this was the last response, and the request is fully fulfilled
+			if(waitingDenials.get(requestID) == 0 && commandArray[1].split("_")[2].equals("1") && request.isFullyLocked()){
+				request.finalizeOrder(nodeUdpServer); // try to reserve resources on nodes with held locks
+
+			// this was the last response, first search of outer addresses (if they were present), and the request was not fulfilled
+			} else if(waitingDenials.get(requestID) == 0 && commandArray[1].split("_")[2].equals("1") && outerAddresses.size() > 0) {
+				ArrayList<String> destinations = new ArrayList<>();
+				for(String address : outerAddresses){
+					if(!request.getFailedNodes().contains(address)){
+						destinations.add(address);
+					}
+				}
+				processLockSend(request, destinations);
+			// if this was the last response, second search of outer addresses, and the request is not fully locked
+			} else if(waitingDenials.get(requestID) == 0 && commandArray[1].split("_")[2].equals("2") && outerAddresses.contains(commandArray[0])){
+				
+			}
+		}
+
+	}
+
+	private void processFailResponse(String commandArgs){
+		// TODO: Process fail
+	}
+
+	private void processUnlock(String commandArgs){
+		// TODO: Process unlock
+	}
+
+	private void processReservation(String commandArgs){
+		// TODO: Process reserve (from other nodes on this node, not request finalization stuff)
+	}
+
+	private void processReservationSuccess(String commandArgs){
+		// TODO: Process reservation success (from this node to other nodes) and inform the client that it was a success
+	}
+
+	private void processReservationFail(String commandArgs){
+		// TODO: Process reservation fail (from this node to other nodes)
+	}
+
+	private void processRequestFail(ResourceRequest request){
+		request.getClientHandler().send("FAILED");
+		request.release(nodeUdpServer);
+		request.status = RequestStatus.DENIED;
+	}
+
+	public void processLockSend(ResourceRequest request, ArrayList<String> addresses){
+
+		HashMap<String, Integer> requestedResources = request.getOrderRemaining();
+
+		for (Entry<String, Integer> orderPart : requestedResources.entrySet()){
+
+			int amountRemaining = requestedResources.get(orderPart.getKey());
+
+			int requestAmount = (amountRemaining - (amountRemaining % addresses.size()) ) / addresses.size();
+			amountRemaining = amountRemaining % addresses.size();
+
+			String remainderReceiver = addresses.get((int)Math.round(Math.random() * (addresses.size() - 1)));
+
+			for(String address : addresses){
+
+				request.status = RequestStatus.WAITING;
+				
+				int amountToRequest = requestAmount;
+				if(address.equals(remainderReceiver)) amountToRequest += amountRemaining;
+
+				waitingDenials.put(request.originator + request.orderId + "/" + getOwnAddressString(), addresses.size());
+
+				nodeUdpServer.send(
+					"LOK " + getOwnAddressString() + " " + request.originator + ":" + request.orderId + "_" + 1 + " " + orderPart.getKey() + ":" + amountToRequest,
+					address.split(":")[0],
+					Integer.parseInt(address.split(":")[1])
+				);
+
+				printInfo("Failed to allocate needed resources on the local node. Forwarding the request to the subnet.");
+
+			}
+			
+		}
+
+	}
+
 	public void printResources(){
 
 		printInfo("Resources:");
@@ -393,6 +488,21 @@ public class NetworkNode {
 						case "LOK": // Someone requests our resources
 							processLock(commandArgs);
 							break;
+						case "LKR": // Someone responded to one of our locks
+							processLockResponse(messageText[1] + ":" + messageText[2] + " " + commandArgs, false);
+							break;
+						case "SUC": // Someone responded to one of our locks, and has ended their search
+							processLockResponse(messageText[1] + ":" + messageText[2] + " " + commandArgs, true);
+						case "FIL": // Someone ended their search and failed their locks
+							processFailResponse(messageText[1] + ":" + messageText[2] + " " + commandArgs);
+						case "ULK": // Someone wants to unlock our resources
+							processUnlock(commandArgs);
+						case "RES": // Someone wants to reserve our resources
+							processReservation(commandArgs);
+						case "RSS": // (One of) Our reservation(s) succeeded
+							processReservationSuccess(commandArgs);
+						case "RSF": // Our reservation failed
+							processReservationFail(commandArgs);
 						default: // We don't know
 							break;
 					}
@@ -405,8 +515,19 @@ public class NetworkNode {
 
 					String[] clientMessageArray = messageText[0].split(" ");
 
+					ClientHandler cli = null;
+
+					for(ClientHandler client : nodeTcpServer.getAllClients()){
+						Socket sock = client.getSocket();
+						if(String.valueOf(sock.getInetAddress()).equals(messageText[1]) &&
+						String.valueOf(sock.getPort()).equals(messageText[2])){
+							cli = client;
+							break;
+						}
+					}
+
 					String clientIdentifier = clientMessageArray[0];
-					ResourceRequest request = new ResourceRequest(clientIdentifier, clientMessageArray[1]);
+					ResourceRequest request = new ResourceRequest(clientIdentifier, cli, clientMessageArray[1]);
 					request.status = RequestStatus.PROCESSING;
 
 					// 1. Check if we have the resources they want ourselves, and respond immediately if we do, block all we can if we don't.
@@ -416,24 +537,13 @@ public class NetworkNode {
 					this.resources.values().stream().filter(res -> {
 						return request.getOrder().keySet().contains(res.getIdentifier());
 					}).forEach(res -> {
-						amountLocked[0] += request.lockAmount(res);
+						amountLocked[0] += res.lock(res.getAvailable());
 					});
 
 					if(amountLocked[0] == request.order.values().stream().reduce(0, (a, b) -> a + b)){
 
 						request.status = RequestStatus.FINALIZED;
-						request.finalizeOrder();
-
-						ClientHandler cli = null;
-
-						for(ClientHandler client : nodeTcpServer.getAllClients()){
-							Socket sock = client.getSocket();
-							if(String.valueOf(sock.getInetAddress()).equals(messageText[1]) &&
-							String.valueOf(sock.getPort()).equals(messageText[2])){
-								cli = client;
-								break;
-							}
-						}
+						request.finalizeOrder(nodeUdpServer); // this will just send us unlocks, but that's fine
 
 						if(cli != null){
 
@@ -456,47 +566,11 @@ public class NetworkNode {
 						}
 
 					} else {
-
-						for (Entry<String, Integer> orderPart : request.getOrderRemaining().entrySet()){
-
-							int amountRemaining = request.getOrderRemaining().get(orderPart.getKey());
-
-							ArrayList<String> addresses = outerAddresses;
-							if(outerAddresses.size() == 0){
-								addresses = innerAddresses;
-							}
-
-							int requestAmount = (amountRemaining - (amountRemaining % addresses.size()) ) / addresses.size();
-							amountRemaining = amountRemaining % addresses.size();
-
-							String remainderReceiver = addresses.get((int)Math.round(Math.random() * (addresses.size() - 1)));
-
-							for(String address : addresses){
-
-								request.status = RequestStatus.WAITING;
-								
-								int amountToRequest = requestAmount;
-								if(address.equals(remainderReceiver)) amountToRequest += amountRemaining;
-
-								waitingDenials.put(request.originator + request.orderId + "/" + getOwnAddressString(), addresses.size());
-
-								nodeUdpServer.send(
-									"LOK " + getOwnAddressString() + " " + request.originator + ":" + request.orderId + " " + orderPart.getKey() + ":" + amountToRequest,
-									address.split(":")[0],
-									Integer.parseInt(address.split(":")[1])
-								);
-
-								printInfo("Failed to allocate needed resources on the local node. Forwarding the request to the subnet.");
-
-							}
-							
+						if(outerAddresses.size() == 0){
+							processLockSend(request, innerAddresses);
+						} else {
+							processLockSend(request, outerAddresses);
 						}
-
-
-						// 2. Send remainder of request to our subnet, divided by the amount of members of our subnet. (If we have a subnet)
-
-						// 3. Send remainder of request to our net, divided by the amount of members in our net.
-
 					}
 
 
