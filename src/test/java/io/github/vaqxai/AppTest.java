@@ -285,7 +285,7 @@ class AppTest {
             Thread.sleep(100);
             TCPClient queryClient = new TCPClient("192.168.1.15", 7000);
             queryClient.send("RESOURCES");
-            queryClient.send("Klient1 dupa:128 Z:4");
+            queryClient.send("Klient1 dupa:128 Z:900");
             Thread.sleep(500);
             queryClient.get();
             System.out.println("[CLIENT GOT]: " + queryClient.get());

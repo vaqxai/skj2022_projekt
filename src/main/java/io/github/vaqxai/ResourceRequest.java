@@ -1,5 +1,6 @@
 package io.github.vaqxai;
 
+import java.net.Inet4Address;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map.Entry;
@@ -143,11 +144,11 @@ public class ResourceRequest {
 	private void sendToAllLockedNodes(UDPServer server, String command){
 		for(Entry<String, HashMap<String, Integer>> resourceMap : this.getLocked().entrySet()){
 			String nodeAddress = resourceMap.getKey();
-			String resourcesToRelease = "";
+			String selectedResources = "";
 			for(Entry<String, Integer> resourceToRelease : resourceMap.getValue().entrySet()){
-				resourcesToRelease += resourceToRelease.getKey() + ":" + resourceToRelease.getValue() + " ";
+				selectedResources += resourceToRelease.getKey() + ":" + resourceToRelease.getValue() + " ";
 			}
-			server.send(command + " " + resourcesToRelease, nodeAddress.split(":")[0], Integer.parseInt(nodeAddress.split(":")[1]));
+			server.send(command + " " + selectedResources, nodeAddress.split(":")[0], Integer.parseInt(nodeAddress.split(":")[1]));
 		}
 	}
 

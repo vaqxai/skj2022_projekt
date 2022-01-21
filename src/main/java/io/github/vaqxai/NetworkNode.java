@@ -28,7 +28,10 @@ public class NetworkNode {
 
 	HashMap<String, NetworkResource> resources = new HashMap<>();
 
-	HashMap<String, Integer> waitingDenials = new HashMap<>();
+	/**
+	 * Key: ClientID:RequestID_SearchID/SearchSender Value: RemainingSearches UnfilledResource1:UnfilledResource1Amt ...
+	 */
+	HashMap<String, String> waitingSearches = new HashMap<>();
 
 	/**
 	 * Where String is order ID : clientIdentifier:sequentialNumber
@@ -139,9 +142,12 @@ public class NetworkNode {
 	private void processLock(String commandArgs){
 
 		String[] commandArray = commandArgs.split(" ");
-		String originatorAddress = commandArray[0];
-		String orderID = commandArray[1];
-		String[] orderContents = Arrays.copyOfRange(commandArray, 2, commandArray.length);
+
+		String senderAddress = commandArray[0];
+		String originatorAddress = commandArray[1];
+		String orderID = commandArray[2];
+
+		String[] orderContents = Arrays.copyOfRange(commandArray, 3, commandArray.length);
 		HashMap<String, Integer> orderParts = new HashMap<>();
 		int totalResourcesNeeded = 0;
 
@@ -164,12 +170,13 @@ public class NetworkNode {
 		}
 
 		// partial request filled
-		if(lockedAmt < totalResourcesNeeded && outerAddresses.size() > 0){
+		if(lockedAmt < totalResourcesNeeded && outerAddresses.size() > 0) {
 
-			waitingDenials.put(orderID + "/" + originatorAddress, outerAddresses.size());
+			waitingSearches.put(orderID + "/" + senderAddress, String.valueOf(outerAddresses.size())); // waiting for n FINs to send to X
 
 			String remainderReceiver = outerAddresses.get((int)Math.round(Math.random() * (outerAddresses.size() - 1)));
 
+			// Forward LOKs
 			for(Entry<String, Integer> res : orderParts.entrySet()){
 
 				int amountRemaining = res.getValue() % outerAddresses.size();
@@ -187,25 +194,30 @@ public class NetworkNode {
 
 			}
 
-		} else if (lockedAmt == totalResourcesNeeded) { // full request filled
+		// full request filled
+		} else if (lockedAmt == totalResourcesNeeded) {
+		
+			// no need to send remaining order contents if full request was filled
+			nodeUdpServer.send("FIN " + orderID, senderAddress.split(":")[0], Integer.parseInt(senderAddress.split(":")[1]));
+		
+		}else if (lockedAmt == 0) { // nothing filled, and can't forward. Search is finished, send back resources that couldn't be locked
 
+			nodeUdpServer.send("FIN " + orderID + " " + Arrays.copyOfRange(commandArray, 3, commandArray.length), senderAddress.split(":")[0], Integer.parseInt(senderAddress.split(":")[1]));
+
+			printInfo("Sent FIL to " + senderAddress + " for order " + orderID + " because a request could not be filled or forwarded");
+
+		}
+
+		if (lockedAmt > 0){
 			// LKR to originator
-			String lkrMessage = "SUC " + originatorAddress + " " + orderID + " ";
+			String lkrMessage = "LKR " + originatorAddress + " " + orderID + " ";
 			for(Entry<String, Integer> orderPart : orderParts.entrySet()){
 				lkrMessage += orderPart.getKey() + ":" + (originalParts.get(orderPart.getKey()) - orderPart.getValue());
 			}
-			
-			// Send full order fill info to originator
+
 			nodeUdpServer.send(lkrMessage, originatorAddress.split(":")[0], Integer.parseInt(originatorAddress.split(":")[1]));
 
-			printInfo("Sent SUC to " + originatorAddress + " with the following contents: " + lkrMessage);
-
-		} else { // nothing filled, and can't forward. Send failure straight away.
-
-			nodeUdpServer.send("FIL " + orderID, originatorAddress.split(":")[0], Integer.parseInt(originatorAddress.split(":")[1]));
-
-			printInfo("Sent FIL to " + originatorAddress + " for order " + orderID + " because a request could not be filled or forwarded");
-
+			printInfo("Sent LKR to " + originatorAddress + " with the following contents: " + lkrMessage);
 		}
 
 		// 1. Check our own resources for availability
@@ -216,6 +228,105 @@ public class NetworkNode {
 
 		// Send a negative response if we can't fill the request at all and we don't have a subnet.
 
+	}
+
+	/**
+	 * Executed internally when search for available values has ended (SUC or FIL)
+	 * @param request forwarded request from SUC or FIL
+	 * @param commandArgs forwarded command arguments from SUC or FIL
+	 */
+	private void requestSearchEnded(String commandArgs){
+
+			// Command Args:
+			// 0. message address
+			// 1. request originator address
+			// 2. requestID
+			// 3-n. if the request was not filled, resources that were not allocated
+
+			// Schema:
+			// 1. Search outer addresses if we have them (twice - if the first search did not complete the request)
+			// 2. Search inner addresses if they were not searched on the first search (and if they were - conduct a second search if the request was not fulfilled)
+			// The second search omits addresses which are known to not have any of the requested resources
+
+			String[] commandArray = commandArgs.split(" ");
+
+			System.out.println(waitingSearches.toString());
+			String requestID = commandArray[2].split("_")[0]; // requestID format: ClientID:OrderID_SearchNo
+
+			boolean isLastResponse = false;
+
+			String responseAddress = commandArray[0];
+
+			// are we the originator of this request?
+			if (getOwnAddressString().equals(commandArray[1])){
+				responseAddress = commandArray[1];
+			}
+
+			int searchesLeft = Integer.parseInt(waitingSearches.get(requestID + "/" + responseAddress).split(" ")[0]);
+			String resourcesNotFound = waitingSearches.get(requestID + "/" + responseAddress).split(" ")[1];
+
+			waitingSearches.replace(requestID + "/" + responseAddress, searchesLeft - 1 + " " + resourcesNotFound); // we are waiting for one less denial/success for our own request
+			
+			// This was the last response. Process the request further.
+			if(searchesLeft == 0){
+
+				boolean isFirstSearch = commandArray[2].split("_")[1].equals("1");
+
+				System.out.println(resourcesNotFound);
+				System.out.println(Arrays.toString(commandArray));
+				System.out.println(innerAddresses);
+				System.out.println(outerAddresses);
+				System.out.println(getOwnAddressString());
+				System.out.println();
+
+				// if it came from one of our outer addresses
+				boolean isSearchFromOuter = outerAddresses.contains(commandArray[0]);
+				boolean isSearchFromInner = innerAddresses.contains(commandArray[0]);
+
+				// did it come from this PC? consider only ports then
+				if(
+					!(isSearchFromInner || isSearchFromOuter) && (
+						commandArray[0].split(":")[0].equals(Inet4Address.getLoopbackAddress().getHostAddress().split(":")[0]) ||
+						commandArray[0].split(":")[0].equals(getOwnAddressString().split(":")[0])
+					)
+				){
+					String remotePort = commandArray[0].split(":")[1];
+
+					for(String address : outerAddresses){
+						System.out.println(address.split(":")[1] + " = " + remotePort);
+						if (address.split(":")[1].equals(remotePort)) { isSearchFromOuter = true; break; }
+					}
+
+					for(String address : innerAddresses){
+						System.out.println(address.split(":")[1] + " = " + remotePort);
+						if (address.split(":")[1].equals(remotePort)) { isSearchFromInner = true; break; }
+					}
+				}
+
+				// This was the first search and it was on outer addresses
+				if(isFirstSearch && isSearchFromOuter) {
+					// Conduct second search on outer addresses
+					for(String address : outerAddresses){
+
+						nodeUdpServer.send(
+							"LOK " + commandArray[1] + " " + commandArray[2].split("_")[0] + "_2 " + resourcesNotFound,
+							commandArray[0].split(":")[0],
+							Integer.parseInt(commandArray[0].split(":")[1])
+						);
+
+					}
+				// This was a second search on outer addresses
+				} else if(!isFirstSearch && isSearchFromOuter) {
+				// This was the first search on inner addresses (whether we had outer addresses or not)
+				} else if (isFirstSearch && isSearchFromInner) {
+					// TODO: Search inner addresses again, increment the search counter
+				}
+				// This was the second search on inner addresses (final search)
+				else {
+					// TODO: We are done
+				}
+
+			}
 	}
 
 	private void processRedirect(String commandArgs){
@@ -231,43 +342,38 @@ public class NetworkNode {
 
 	}
 
-	private void processLockResponse(String commandArgs, boolean searchEnded){
+	private void processLockResponse(String commandArgs){
 
 		String[] commandArray = commandArgs.split(" ");
-		ResourceRequest request = requestsInProgress.get(commandArray[2].split("_")[0]);
 
+		// Command Args:
+		// 0. message sender address
+		// 1. request originator address
+		// 2. requestID (clientID:orderID_searchNo)
+		// 3-n. either the resourcs that were successfully locked (SUC) or resources that failed to be locked (FIL)
 
-		if (searchEnded) {
-			String requestID = commandArray[2].split("_")[0];
-			waitingDenials.replace(requestID, waitingDenials.get(requestID) - 1);
+		ResourceRequest rrq = requestsInProgress.get(commandArray[2].split("_")[0]);
+		for(int i = 3; i < commandArray.length; i++){
+			String resourceIdentifier = commandArray[i].split(":")[0];
+			int resourceAmount = Integer.parseInt(commandArray[i].split(":")[1]);
 
-			// this was the last response, and the request is fully fulfilled
-			if(waitingDenials.get(requestID) == 0 && commandArray[1].split("_")[2].equals("1") && request.isFullyLocked()){
-				request.finalizeOrder(nodeUdpServer); // try to reserve resources on nodes with held locks
-
-			// this was the last response, first search of outer addresses (if they were present), and the request was not fulfilled
-			} else if(waitingDenials.get(requestID) == 0 && commandArray[1].split("_")[2].equals("1") && outerAddresses.size() > 0) {
-				ArrayList<String> destinations = new ArrayList<>();
-				for(String address : outerAddresses){
-					if(!request.getFailedNodes().contains(address)){
-						destinations.add(address);
-					}
-				}
-				processLockSend(request, destinations);
-			// if this was the last response, second search of outer addresses, and the request is not fully locked
-			} else if(waitingDenials.get(requestID) == 0 && commandArray[1].split("_")[2].equals("2") && outerAddresses.contains(commandArray[0])){
-				
-			}
+			rrq.addLockedResource(commandArray[0], resourceIdentifier, resourceAmount);
+			printInfo(resourceAmount + " of resource " + resourceIdentifier + " was locked on " + commandArray[0] + " for request ID: " + rrq.getIdentifier());
 		}
 
 	}
 
-	private void processFailResponse(String commandArgs){
-		// TODO: Process fail
-	}
-
 	private void processUnlock(String commandArgs){
-		// TODO: Process unlock
+		String[] commandArray = commandArgs.split(" ");
+
+		for(String resourceString : commandArray){
+			String resourceIdentifier = resourceString.split(":")[0];
+			int resourceAmount = Integer.parseInt(resourceString.split(":")[1]);
+
+			this.resources.get(resourceIdentifier).unlock(resourceAmount);
+		}
+
+		printInfo("Someone unlocked the following resources on this node: " + commandArgs);
 	}
 
 	private void processReservation(String argsStr){
@@ -285,14 +391,14 @@ public class NetworkNode {
 	}
 
 	private void processRequestFail(ResourceRequest request){
+		printInfo("Order " + request.getIdentifier() + " placed with this node could not be completed and has failed.");
+
 		request.getClientHandler().send("FAILED");
 		request.release(nodeUdpServer);
 		request.status = RequestStatus.DENIED;
 	}
 
-	public void processLockSend(ResourceRequest request, ArrayList<String> addresses){
-
-		HashMap<String, Integer> requestedResources = request.getOrderRemaining();
+	public void processLockSend(String originator, String orderId, HashMap<String, Integer> requestedResources, ArrayList<String> addresses){
 
 		for (Entry<String, Integer> orderPart : requestedResources.entrySet()){
 
@@ -315,16 +421,12 @@ public class NetworkNode {
 			}
 
 			for(String address : addresses){
-
-				request.status = RequestStatus.WAITING;
 				
 				int amountToRequest = requestAmount;
 				if(address.equals(remainderReceiver)) amountToRequest += amountRemaining;
 
-				waitingDenials.put(request.originator + request.orderId + "/" + getOwnAddressString(), addresses.size());
-
 				nodeUdpServer.send(
-					"LOK " + getOwnAddressString() + " " + request.originator + ":" + request.orderId + "_" + 1 + " " + orderPart.getKey() + ":" + amountToRequest,
+					"LOK " + getOwnAddressString() + " " + originator + ":" + orderId + "_" + 1 + " " + orderPart.getKey() + ":" + amountToRequest,
 					address.split(":")[0],
 					Integer.parseInt(address.split(":")[1])
 				);
@@ -496,17 +598,17 @@ public class NetworkNode {
 							processRedirect(commandArgs);
 							break;
 						case "LOK": // Someone requests our resources
-							processLock(commandArgs);
+							processLock(messageText[1] + ":" + messageText[2] + " " + commandArgs);
 							break;
 						case "LKR": // Someone responded to one of our locks
-							processLockResponse(messageText[1] + ":" + messageText[2] + " " + commandArgs, false);
+							processLockResponse(messageText[1] + ":" + messageText[2] + " " + commandArgs);
 							break;
-						case "SUC": // Someone responded to one of our locks, and has ended their search
-							processLockResponse(messageText[1] + ":" + messageText[2] + " " + commandArgs, true);
-						case "FIL": // Someone ended their search and failed their locks
-							processFailResponse(messageText[1] + ":" + messageText[2] + " " + commandArgs);
+						case "FIN": // Someone ended their search
+							requestSearchEnded(messageText[1] + ":" + messageText[2] + " " + commandArgs);
+							break;
 						case "ULK": // Someone wants to unlock our resources
 							processUnlock(commandArgs);
+							break;
 						case "RES": // Someone wants to reserve our resources
 							processReservation(messageText[1] + ":" + messageText[2] + " " + commandArgs);
 							break;
@@ -544,6 +646,7 @@ public class NetworkNode {
 						return request.getOrder().keySet().contains(res.getIdentifier());
 					}).forEach(res -> {
 						int tempLockedAmt = res.lock(request.getOrder().get(res.getIdentifier()));
+						printInfo(tempLockedAmt + " of resource " + res.getIdentifier() + " was locked on the local node for request ID: " + request.getIdentifier());
 						amountLocked[0] += tempLockedAmt;
 						request.addLockedResource(getOwnAddressString(), res.getIdentifier(), tempLockedAmt);
 					});
@@ -552,12 +655,15 @@ public class NetworkNode {
 
 						request.status = RequestStatus.FINALIZED;
 						request.finalizeOrder(nodeUdpServer); // this will just send us reservations
+						printInfo("Order " + request.getIdentifier() + " placed with this node was successfully completed and allocated.");
 
 					} else {
-						if(outerAddresses.size() == 0){
+						if(outerAddresses.size() == 0 && innerAddresses.size() > 0){
 							processLockSend(request, innerAddresses);
-						} else {
+						} else if (outerAddresses.size() > 0) {
 							processLockSend(request, outerAddresses);
+						} else {
+							processRequestFail(request);
 						}
 					}
 
