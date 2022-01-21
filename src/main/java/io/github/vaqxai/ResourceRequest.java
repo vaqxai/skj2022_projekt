@@ -134,6 +134,12 @@ public class ResourceRequest {
 			resourceMap.put(resourceType, 0);
 		
 		resourceMap.replace(resourceType, resourceMap.get(resourceType) + resourceAmount);
+
+		if(remaining.containsKey(resourceType))
+			if(remaining.get(resourceType) == resourceAmount)
+				remaining.remove(resourceType);
+			else
+				remaining.replace(resourceType, remaining.get(resourceType) - resourceAmount);
 	}
 
 	/**
