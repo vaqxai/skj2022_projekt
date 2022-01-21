@@ -165,6 +165,10 @@ public class ResourceRequest {
 	 * @param server The UDP Server that will send the messages.
 	 */
 	public void finalizeOrder(UDPServer server){
+		originatorHandler.send("ALLOCATED");
+		for(Entry<String, HashMap<String, Integer>> locked : locked.entrySet()){
+			locked.getValue().entrySet().stream().forEach(x -> originatorHandler.send(x.getKey() + ":" + x.getValue() + ":" + locked.getKey()));
+		}
 		sendToAllLockedNodes(server, "RES " + originator);
 	}
 

@@ -285,11 +285,12 @@ class AppTest {
             Thread.sleep(100);
             TCPClient queryClient = new TCPClient("192.168.1.15", 7000);
             queryClient.send("RESOURCES");
-            queryClient.send("Klient1 dupa:128");
+            queryClient.send("Klient1 dupa:128 Z:4");
             Thread.sleep(500);
-            System.out.println("Cli: " + queryClient.get());
-            System.out.println("Cli: " + queryClient.get());
-            System.out.println("Cli: " + queryClient.get());
+            queryClient.get();
+            System.out.println("[CLIENT GOT]: " + queryClient.get());
+            System.out.println("[CLIENT GOT]: " + queryClient.get());
+            System.out.println("[CLIENT GOT]: " + queryClient.get());
             queryClient.send("RESOURCES");
         } catch (InterruptedException e) {
             System.err.println(e);
@@ -325,9 +326,9 @@ class AppTest {
 
             queryClient.send("Klient1 C:4");
             Thread.sleep(1000);
-            System.out.println("Cli: " + queryClient.get());
-            System.out.println("Cli: " + queryClient.get());
-            System.out.println("Cli: " + queryClient.get());
+            queryClient.get();
+            System.out.println("[CLIENT GOT]: " + queryClient.get());
+            System.out.println("[CLIENT GOT]: " + queryClient.get());
 
         } catch (InterruptedException e) {
             System.err.println(e);

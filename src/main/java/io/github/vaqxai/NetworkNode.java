@@ -11,8 +11,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
-import javax.naming.directory.SearchResult;
-
 public class NetworkNode {
 
 	public final String identifier;
@@ -275,8 +273,6 @@ public class NetworkNode {
 	private void processReservation(String argsStr){
 
 		String[] args = argsStr.split(" ");
-		String senderAddress = args[0];
-		String message = "RSS";
 
 		for(int i = 2; i < args.length; i++){
 
@@ -536,7 +532,8 @@ public class NetworkNode {
 					}
 
 					String clientIdentifier = clientMessageArray[0];
-					ResourceRequest request = new ResourceRequest(clientIdentifier, cli, clientMessageArray[1]);
+					String[] requestArray = Arrays.copyOfRange(clientMessageArray, 1, clientMessageArray.length);
+					ResourceRequest request = new ResourceRequest(clientIdentifier, cli, requestArray);
 					request.status = RequestStatus.PROCESSING;
 
 					// 1. Check if we have the resources they want ourselves, and respond immediately if we do, block all we can if we don't.
@@ -546,8 +543,9 @@ public class NetworkNode {
 					this.resources.values().stream().filter(res -> {
 						return request.getOrder().keySet().contains(res.getIdentifier());
 					}).forEach(res -> {
-						amountLocked[0] += res.lock(request.getOrder().get(res.getIdentifier()));
-						request.addLockedResource("localhost:" + nodeUdpServer.getSocket().getLocalPort(), res.getIdentifier(), amountLocked[0]);
+						int tempLockedAmt = res.lock(request.getOrder().get(res.getIdentifier()));
+						amountLocked[0] += tempLockedAmt;
+						request.addLockedResource(getOwnAddressString(), res.getIdentifier(), tempLockedAmt);
 					});
 
 					if(amountLocked[0] == request.order.values().stream().reduce(0, (a, b) -> a + b)){

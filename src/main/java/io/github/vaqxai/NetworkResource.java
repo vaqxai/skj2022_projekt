@@ -68,5 +68,9 @@ public class NetworkResource {
 	public int getLocked(){
 		return lockedAmount;
 	}
+
+	public String toString(){
+		return "Name: " + identifier + "; Available: " + availableAmount + "; Locked " + lockedAmount;
+	}
 	
 }
