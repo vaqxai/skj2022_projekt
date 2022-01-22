@@ -54,10 +54,8 @@ public class NetworkNode {
 		for (String addNodeAddr : addNodeAddrStrArr){
 			if(innerAddresses.size() < 4){
 				innerAddresses.add(addNodeAddr);
-				printInfo("  Added " + addNodeAddr + " to inner addresses.");
 			} else if(outerAddresses.size() < 4){
 				outerAddresses.add(addNodeAddr);
-				printInfo("  Added " + addNodeAddr + " to outer addresses.");
 			} else {
 				throw new RuntimeException("Got add command despite having 8 networks conntected");
 			}
@@ -150,11 +148,13 @@ public class NetworkNode {
 		String originatorAddress = commandArray[1];
 		String orderID = commandArray[2];
 
+		String orderResourceString = "";
 		String[] orderContents = Arrays.copyOfRange(commandArray, 3, commandArray.length);
 		HashMap<String, Integer> orderParts = new HashMap<>();
 		int totalResourcesNeeded = 0;
 
 		for(String orderPart : orderContents){
+			orderResourceString += " " + orderPart;
 			orderParts.put(orderPart.split(":")[0], Integer.parseInt(orderPart.split(":")[1]));
 			totalResourcesNeeded += Integer.parseInt(orderPart.split(":")[1]);
 		}
@@ -177,7 +177,7 @@ public class NetworkNode {
 		// partial request filled
 		if(lockedAmt < totalResourcesNeeded && outerAddresses.size() > 0) {
 
-			this.searches.put(orderID, new NetworkSearch(orderID, outerAddresses.size(), originalParts));
+			searches.put(orderID, new NetworkSearch(orderID, outerAddresses.size(), originalParts));
 
 			String remainderReceiver = outerAddresses.get((int)Math.round(Math.random() * (outerAddresses.size() - 1)));
 
@@ -233,28 +233,28 @@ public class NetworkNode {
 		if (lockedAmt == totalResourcesNeeded) {
 			
 			// no need to send remaining order contents if full request was filled
-			nodeUdpServer.send("FIN " + originatorAddress + " " + orderID, senderAddress.split(":")[0], Integer.parseInt(senderAddress.split(":")[1]));
+			nodeUdpServer.send("FIN " + originatorAddress + " " + orderID + orderResourceString, senderAddress.split(":")[0], Integer.parseInt(senderAddress.split(":")[1]));
 
 			printInfo("Sent FIN to " + senderAddress + " for order " + orderID + " because a request was fully filled");
 
-			searches.remove(orderID);
-
 		// nothing filled, or partially filled and can't forward. Search is finished, send back resources that couldn't be locked
-		} else if (searches.size() == 0 || searches.get(orderID).getAmountLeft() == 0) {
+		} else if (searches.get(orderID) == null) {
 
-			String remainingResources = searches.get(orderID).getRemainingString();
+			String lockedResources = "";
+
+			for(Entry<String, Integer> resEntry : orderParts.entrySet()){
+				lockedResources += " " + resEntry.getKey() + ":" + (originalParts.get(resEntry.getKey()) - resEntry.getValue());
+			}
 
 			nodeUdpServer.send(
 				"FIN " +
 				originatorAddress +
 				" " +
 				orderID +
-				remainingResources,
+				lockedResources,
 				senderAddress.split(":")[0],
 				Integer.parseInt(senderAddress.split(":")[1])
 			);
-
-			searches.remove(orderID);
 
 			printInfo("Sent FIN to " + senderAddress + " for order " + orderID + " because a request could not be filled or forwarded");
 
@@ -293,80 +293,89 @@ public class NetworkNode {
 
 			String searchID = commandArray[2]; // requestID format: ClientID:OrderID_SearchNo
 
-			NetworkSearch s = searches.get(searchID);
+			NetworkSearch s = NetworkSearch.getByID(searchID);
 
 			s.incAmountLeft(-1);
 
 			printInfo("Searches remaining for order " + searchID + ": " + s.getAmountLeft());
 
+			// if it came from one of our outer addresses
+			boolean isSearchFromOuter = outerAddresses.contains(commandArray[0]);
+			boolean isSearchFromInner = innerAddresses.contains(commandArray[0]);
+
+			boolean iAmTheOriginator = getOwnAddressString().equals(commandArray[1]);
+
+			// did it come from this PC? consider only ports then
+			if(
+				!(isSearchFromInner || isSearchFromOuter) && (
+					commandArray[0].split(":")[0].equals(Inet4Address.getLoopbackAddress().getHostAddress().split(":")[0]) ||
+					commandArray[0].split(":")[0].equals(getOwnAddressString().split(":")[0])
+				)
+			){
+				String remotePort = commandArray[0].split(":")[1];
+
+				for(String address : outerAddresses){
+					if (address.split(":")[1].equals(remotePort)) { isSearchFromOuter = true; break; }
+				}
+
+				for(String address : innerAddresses){
+					if (address.split(":")[1].equals(remotePort)) { isSearchFromInner = true; break; }
+				}
+			}
+
+			if(commandArray.length > 3)
+				for(String resourceString : Arrays.copyOfRange(commandArray, 3, commandArray.length)){
+
+					String resId = resourceString.split(":")[0];
+					int resAmt = Integer.parseInt(resourceString.split(":")[1]);
+
+					s.incrementRemainingEntry(resId, -resAmt);
+
+					if(resAmt == 0){
+
+						if( commandArray[0].split(":")[0].equals(Inet4Address.getLoopbackAddress().getHostAddress().split(":")[0]) ||
+						commandArray[0].split(":")[0].equals(getOwnAddressString().split(":")[0]) ){
+							s.addFailedHost(Inet4Address.getLoopbackAddress().getHostAddress().split(":")[0] + ":" + commandArray[0].split(":")[1]);
+							s.addFailedHost(commandArray[0].split(":")[0].equals(getOwnAddressString().split(":")[0]) + ":" + commandArray[0].split(":")[1]);
+						}
+
+						s.addFailedHost(commandArray[0]);
+						printInfo("Host " + commandArray[0] + " has failed this search. It has not delivered any resources.");
+					}
+
+				}
+
 			// This was the last response. Process the request further.
 			if(s.getAmountLeft() == 0){
 
-				// if it came from one of our outer addresses
-				boolean isSearchFromOuter = outerAddresses.contains(commandArray[0]);
-				boolean isSearchFromInner = innerAddresses.contains(commandArray[0]);
-
-				boolean iAmTheOriginator = getOwnAddressString().equals(commandArray[1]);
-
-				// did it come from this PC? consider only ports then
-				if(
-					!(isSearchFromInner || isSearchFromOuter) && (
-						commandArray[0].split(":")[0].equals(Inet4Address.getLoopbackAddress().getHostAddress().split(":")[0]) ||
-						commandArray[0].split(":")[0].equals(getOwnAddressString().split(":")[0])
-					)
-				){
-					String remotePort = commandArray[0].split(":")[1];
-
-					for(String address : outerAddresses){
-						if (address.split(":")[1].equals(remotePort)) { isSearchFromOuter = true; break; }
-					}
-
-					for(String address : innerAddresses){
-						if (address.split(":")[1].equals(remotePort)) { isSearchFromInner = true; break; }
-					}
-				}
-
-				if(commandArray.length > 3)
-					for(String resourceString : Arrays.copyOfRange(commandArray, 3, commandArray.length)){
-
-						String resId = resourceString.split(":")[0];
-						int resAmt = Integer.parseInt(resourceString.split(":")[1]);
-
-						this.searches.get(searchID).modifyRemainingEntry(resId, resAmt);
-
-						if(s.getResourceLeft(resId) == s.getResourceTotal(resId))
-							s.addFailedHost(commandArray[0]);
-
-					}
+				printInfo("All queued searches were completed.");
 
 				ArrayList<String> addresses = null;
 
-				if(isSearchFromOuter && !iAmTheOriginator){
+				if(!s.isFirstSearch() && isSearchFromOuter){
 					addresses = new ArrayList<String>(outerAddresses);
 				} else {
 					addresses = new ArrayList<String>(innerAddresses);
 				}
 
+				int remainingAmt = s.getRemaining().values().stream().reduce(0, (a,b) -> a+b);
+
 				addresses = (ArrayList<String>) addresses.stream().filter(x -> !s.isFailedHost(x)).collect(Collectors.toList());
 
-				printInfo(""+isSearchFromOuter);
-				printInfo(""+isSearchFromInner);
-				printInfo(""+s.getRemainingString());
-
 				// This was the first search and it was on outer addresses, conduct second search on outer addresses
-					if(s.isFirstSearch() && s.getRemaining().size() > 0 && addresses.size() > 0) {
-						processLockSend(commandArray[1], searchID, s.getRemaining(), addresses);
+					if(!s.isFirstSearch() && isSearchFromOuter && remainingAmt > 0 && addresses.size() > 0) {
 						printInfo("Conducting second search on outer addresses: " + addresses.toString());
 						s.makeFirst(); // next search will be first
-					// This was a second search on outer addresses, conduct first search on inner addresses
-					} else if(!s.isFirstSearch() && isSearchFromOuter && iAmTheOriginator && s.getRemaining().size() > 0 && addresses.size() > 0) {
 						processLockSend(commandArray[1], searchID, s.getRemaining(), addresses);
+					// This was a second search on outer addresses, conduct first search on inner addresses
+					} else if(s.isFirstSearch() && isSearchFromOuter && iAmTheOriginator && remainingAmt > 0 && addresses.size() > 0) {
 						printInfo("Conducting first search on inner addresses: " + addresses.toString());
 						s.makeSecond(); // next search will be second
-					// This was the first search on inner addresses (whether we had outer addresses or not), conduct second search on inner addresses
-					} else if (isSearchFromInner && iAmTheOriginator && s.getRemaining().size() > 0 && addresses.size() > 0) {
 						processLockSend(commandArray[1], searchID, s.getRemaining(), addresses);
+					// This was the first search on inner addresses (whether we had outer addresses or not), conduct second search on inner addresses
+					} else if (!s.isFirstSearch() && isSearchFromInner && iAmTheOriginator && remainingAmt > 0 && addresses.size() > 0) {
 						printInfo("Conducting second search on inner addresses: " + addresses.toString());
+						processLockSend(commandArray[1], searchID, s.getRemaining(), addresses);
 					}
 				// This was the second search on inner addresses (final search)
 				else {
@@ -387,20 +396,17 @@ public class NetworkNode {
 
 						String message = "FIN " + commandArray[1] + " " + commandArray[2];
 
-						if(s.getRemainingString() != " ")
-							message += s.getRemainingString();
+						for(Entry<String, Integer> resEntry : s.getManifest().entrySet()){
+							message += " " + resEntry.getKey() + ":" + (s.getResourceTotal(resEntry.getKey()) - s.getResourceLeft(resEntry.getKey()));
+						}
 
 						nodeUdpServer.send(message, commandArray[1].split(":")[0], Integer.parseInt(commandArray[1].split(":")[1]));
 						printInfo("Sending FIN with the following data: " + message);
 
 					}
-
-					searches.remove(searchID);
 				}
 
 			}
-
-			printInfo("Got FIN, searches: " + searches);
 	}
 
 	private void processRedirect(String commandArgs){
@@ -487,10 +493,6 @@ public class NetworkNode {
 
 	public void processLockSend(String originator, String orderId, HashMap<String, Integer> requestedResources, ArrayList<String> addresses){
 
-		printInfo("Processing lock send");
-		printInfo("Addresses: " + addresses);
-		printInfo("Resources: " + requestedResources);
-
 		HashMap<String, String> partitionedResources = new HashMap<>();
 
 		for (Entry<String, Integer> orderPart : requestedResources.entrySet()){
@@ -507,12 +509,6 @@ public class NetworkNode {
 
 				remainderReceiver = addresses.get((int)Math.round(Math.random() * (addresses.size() - 1)));
 
-				printInfo("Remainder Receiver " + remainderReceiver);
-
-			} else {
-
-				// Are you trying to send a lock to zero addresses?
-
 			}
 
 			for(String address : addresses){
@@ -526,15 +522,16 @@ public class NetworkNode {
 					partitionedResources.put(address, "");
 
 				partitionedResources.put(address, partitionedResources.get(address) + " " + orderPart.getKey() + ":" + amountToRequest);
-				printInfo("Partitioned resources: " + partitionedResources);
 			}
 			
 		}
 
-		// we are always the search originator if we are sending LOKs
-		searches.put(orderId, new NetworkSearch(orderId, partitionedResources.size(), requestedResources)); // waiting for n FINs to send to X
+		if(!searches.containsKey(orderId))
+			searches.put(orderId, new NetworkSearch(orderId, partitionedResources.size(), requestedResources));
+		else
+			searches.get(orderId).setAmountLeft(partitionedResources.size());
+
 		printInfo("Waiting for " + partitionedResources.size() + " searches to be completed.");
-		printInfo("Search: " + searches.get(orderId));
 
 		for(Entry<String, String> res : partitionedResources.entrySet()){
 
@@ -791,9 +788,11 @@ public class NetworkNode {
 				} else {
 					if(outerAddresses.size() == 0 && innerAddresses.size() > 0){
 						requestsInProgress.put(request.getIdentifier(), request);
+						printInfo("Order was sent straight to the inner network.");
 						processLockSend(request, innerAddresses);
 					} else if (outerAddresses.size() > 0) {
 						requestsInProgress.put(request.getIdentifier(), request);
+						printInfo("Order was sent to outer network.");
 						processLockSend(request, outerAddresses);
 					} else {
 						processRequestFail(request);

@@ -8,6 +8,12 @@ import java.util.Map.Entry;
  * Utility class that represents an ongoing network search
  */
 public class NetworkSearch {
+
+	public static HashMap<String, NetworkSearch> all = new HashMap<>();
+
+	public static NetworkSearch getByID(String searchID){
+		return all.get(Thread.currentThread().getId() + searchID);
+	}
 	
 	private String searchID = "N/A";
 	private int searchesLeft = 0;
@@ -25,8 +31,10 @@ public class NetworkSearch {
 	public NetworkSearch(String ID, int requestAmount, HashMap<String, Integer> manifest){
 		this.searchID = ID;
 		this.searchesLeft = requestAmount;
-		this.manifest = manifest;
+		this.manifest = new HashMap<>(manifest);
 		this.remaining = new HashMap<>(manifest);
+
+		NetworkSearch.all.put(Thread.currentThread().getId() + ID, this);
 	}
 
 	/**
@@ -48,7 +56,7 @@ public class NetworkSearch {
 	 * Marks this search as being on its first stage
 	 */
 	public void makeFirst(){
-		this.firstSearch = false;
+		this.firstSearch = true;
 	}
 
 	/**
