@@ -14,6 +14,42 @@ public class NetworkSearch {
 	private HashMap<String, Integer> manifest = new HashMap<>();
 	private HashMap<String, Integer> remaining = new HashMap<>();
 	private ArrayList<String> failedHosts = new ArrayList<>();
+	private boolean firstSearch;
+
+	/**
+	 * Primary constructor for a network search
+	 * @param ID assigned ID for this search
+	 * @param requestAmount amount of requests that will be sent by this search
+	 * @param manifest resources that this search is looking for
+	 */
+	public NetworkSearch(String ID, int requestAmount, HashMap<String, Integer> manifest){
+		this.searchID = ID;
+		this.searchesLeft = requestAmount;
+		this.manifest = manifest;
+		this.remaining = new HashMap<>(manifest);
+	}
+
+	/**
+	 * The algorithm conducts searches in a two-staged manner (if sent directly by a request originator)
+	 * @return current status of this search
+	 */
+	public boolean isFirstSearch(){
+		return firstSearch;
+	}
+
+	/**
+	 * Marks this search as being on its second stage
+	 */
+	public void makeSecond(){
+		this.firstSearch = false;
+	}
+
+	/**
+	 * Marks this search as being on its first stage
+	 */
+	public void makeFirst(){
+		this.firstSearch = false;
+	}
 
 	/**
 	 * 
@@ -29,6 +65,22 @@ public class NetworkSearch {
 	 */
 	public int getAmountLeft(){
 		return this.searchesLeft;
+	}
+
+	/**
+	 * Changes the amount of requests left in this search
+	 * @param newAmount
+	 */
+	public void setAmountLeft(int newAmount){
+		this.searchesLeft = newAmount;
+	}
+
+	/**
+	 * Offsets this searches amount of searches left by a given amount
+	 * @param offset amount to offset by
+	 */
+	public void incAmountLeft(int offset){
+		this.searchesLeft += offset;
 	}
 	
 	/**
@@ -131,6 +183,10 @@ public class NetworkSearch {
 	 */
 	public void incrementRemainingEntry(String identifier, int amount){
 		this.remaining.replace(identifier, this.remaining.get(identifier) + amount);
+	}
+
+	public String toString(){
+		return "[Search: " + searchID + " Manifest: " + getManifestString() + " Remaining: " + getRemainingString() + " Failed Hosts: " + failedHosts + "]";
 	}
 
 }
