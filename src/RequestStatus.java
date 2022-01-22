@@ -1,5 +1,3 @@
-package io.github.vaqxai;
-
 public enum RequestStatus {
 
 	RECEIVED,

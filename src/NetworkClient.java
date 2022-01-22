@@ -1,4 +1,3 @@
-package io.github.vaqxai;
 /* -----------------------------------------------------------------
  * Klasa klienta dla projektu "System rezerwacji zasobów".
  * The client class for the "Resource reservation system" project.

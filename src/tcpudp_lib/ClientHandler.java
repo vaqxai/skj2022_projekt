@@ -1,5 +1,4 @@
-package io.github.vaqxai;
-
+package tcpudp_lib;
 import java.io.*;
 import java.net.*;
 import java.util.LinkedList;

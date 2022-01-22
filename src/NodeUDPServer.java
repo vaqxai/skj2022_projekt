@@ -1,10 +1,11 @@
-package io.github.vaqxai;
-
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.function.Consumer;
+
+import tcpudp_lib.Message;
+import tcpudp_lib.UDPServer;
 
 public class NodeUDPServer extends UDPServer {
 

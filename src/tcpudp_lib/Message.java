@@ -1,4 +1,4 @@
-package io.github.vaqxai;
+package tcpudp_lib;
 
 public class Message {
 

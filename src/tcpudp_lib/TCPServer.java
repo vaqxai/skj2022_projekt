@@ -1,10 +1,9 @@
-package io.github.vaqxai;
+package tcpudp_lib;
 
 import java.io.IOException;
 import java.net.*;
 import java.util.ArrayList;
 import java.util.function.*;
-import ClientHandler;
 
 /**
 * TCPServer is a multithreaded ServerSocket wrapper that can respond to requests from multiple clients at once, using a predetermined callback.

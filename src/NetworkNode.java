@@ -1,5 +1,3 @@
-package io.github.vaqxai;
-
 import java.io.*;
 import java.net.*;
 import java.util.ArrayList;
@@ -13,6 +11,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
+
+import tcpudp_lib.ClientHandler;
+import tcpudp_lib.TCPServer;
 
 public class NetworkNode {
 

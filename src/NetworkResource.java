@@ -1,5 +1,3 @@
-package io.github.vaqxai;
-
 import java.util.HashMap;
 
 public class NetworkResource {

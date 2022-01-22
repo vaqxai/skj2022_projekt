@@ -1,8 +1,9 @@
-package io.github.vaqxai;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map.Entry;
+
+import tcpudp_lib.ClientHandler;
+import tcpudp_lib.UDPServer;
 
 public class ResourceRequest {
 
