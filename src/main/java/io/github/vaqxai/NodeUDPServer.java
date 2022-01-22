@@ -70,8 +70,6 @@ public class NodeUDPServer extends UDPServer {
 
 				callback.accept(packet);
 
-				System.out.println("UDP Server has received a message!");
-
 			} catch (IOException e){
 				System.err.println(e);
 			}

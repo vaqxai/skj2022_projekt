@@ -32,9 +32,19 @@ public class NetworkNode {
 	HashMap<String, NetworkResource> resources = new HashMap<>();
 
 	/**
-	 * Key: ClientID:RequestID_SearchID/SearchSender Value: RemainingSearches UnfilledResource1:UnfilledResource1Amt ...
+	 * Key: ClientID:RequestID_SearchN Value: RemainingSearches
 	 */
-	HashMap<String, String> waitingSearches = new HashMap<>();
+	HashMap<String, Integer> waitingSearches = new HashMap<>();
+
+	/**
+	 * Key: SearchID Value: Resource list that was demanded in a search from this node (used in determining failed acquisitions)
+	 */
+	HashMap<String, String> searchManifests = new HashMap<>();
+
+	/**
+	 * Key: SearchID Value: Failing Address (an address that failed to provide any resources in a particular search)
+	 */
+	HashMap<String, String> failedAcquisitions = new HashMap<>();
 
 	/**
 	 * Where String is order ID : clientIdentifier:sequentialNumber
@@ -143,7 +153,7 @@ public class NetworkNode {
 	}
 
 	private void processLock(String commandArgs){
-
+		
 		String[] commandArray = commandArgs.split(" ");
 
 		String senderAddress = commandArray[0];
@@ -154,10 +164,15 @@ public class NetworkNode {
 		HashMap<String, Integer> orderParts = new HashMap<>();
 		int totalResourcesNeeded = 0;
 
+		String orderString = "";
+
 		for(String orderPart : orderContents){
+			orderString += " " + orderPart;
 			orderParts.put(orderPart.split(":")[0], Integer.parseInt(orderPart.split(":")[1]));
 			totalResourcesNeeded += Integer.parseInt(orderPart.split(":")[1]);
 		}
+
+		searchManifests.put(orderID, orderString);
 
 		HashMap<String, Integer> originalParts = new HashMap<>(orderParts);
 
@@ -176,7 +191,7 @@ public class NetworkNode {
 		if(lockedAmt < totalResourcesNeeded && outerAddresses.size() > 0) {
 
 			// we are always the search originator of the searches we start.
-			waitingSearches.put(orderID.split("_")[0] + "/" + getOwnAddressString(), String.valueOf(outerAddresses.size())); // waiting for n FINs to send to X
+			waitingSearches.put(orderID.split("_")[0], outerAddresses.size()); // waiting for n FINs to send to X
 
 			String remainderReceiver = outerAddresses.get((int)Math.round(Math.random() * (outerAddresses.size() - 1)));
 
@@ -195,6 +210,8 @@ public class NetworkNode {
 						amountToAsk += amountRemaining;
 					}
 
+					if(amountToAsk == 0) continue;
+
 					if(!partitionedResources.containsKey(address))
 						partitionedResources.put(address, "");
 					
@@ -207,8 +224,6 @@ public class NetworkNode {
 			for(Entry<String, String> res : partitionedResources.entrySet()){
 
 				nodeUdpServer.send("LOK " + originatorAddress + " " + orderID + res.getValue(), res.getKey().split(":")[0], Integer.parseInt(res.getKey().split(":")[1]));
-
-				System.out.println(waitingSearches.toString());
 
 				printInfo("Forwarded LOK to " + res.getKey() + " for order " + orderID + " for resources" + res.getValue());
 
@@ -236,14 +251,15 @@ public class NetworkNode {
 
 			printInfo("Sent FIN to " + senderAddress + " for order " + orderID + " because a request was fully filled");
 
+			searchManifests.remove(orderID);
+
 		// nothing filled, or partially filled and can't forward. Search is finished, send back resources that couldn't be locked
-		} else if (waitingSearches.size() == 0 || Integer.parseInt(waitingSearches.get(orderID.split("_")[0] + "/" + getOwnAddressString()).split(" ")[0]) == 0) {
+		} else if (waitingSearches.size() == 0 || waitingSearches.get(orderID.split("_")[0]) == 0) {
 
 			String remainingResources = "";
 
 			for(Entry<String, Integer> orderPart : orderParts.entrySet()){
-				if(orderPart.getValue() > 0)
-					remainingResources += " " + orderPart.getKey() + ":" + orderPart.getValue();
+				remainingResources += " " + orderPart.getKey() + ":" + (originalParts.get(orderPart.getKey()) - orderPart.getValue()) + "/" + originalParts.get(orderPart.getKey());
 			}
 
 			nodeUdpServer.send(
@@ -255,6 +271,8 @@ public class NetworkNode {
 				senderAddress.split(":")[0],
 				Integer.parseInt(senderAddress.split(":")[1])
 			);
+
+			searchManifests.remove(orderID);
 
 			printInfo("Sent FIN to " + senderAddress + " for order " + orderID + " because a request could not be filled or forwarded");
 
@@ -294,26 +312,14 @@ public class NetworkNode {
 			String requestID = commandArray[2]; // requestID format: ClientID:OrderID_SearchNo
 
 			// we are always the search originator for FILs that come to us.
-			String searchID = requestID.split("_")[0] + "/" + getOwnAddressString();
-			System.out.println(searchID);
-			System.out.println(waitingSearches.toString());
-			int searchesLeft = Integer.parseInt(waitingSearches.get(searchID).split(" ")[0]);
-			String resourcesNotFound = "";
+			String searchID = requestID.split("_")[0];
+			int searchesLeft = waitingSearches.get(searchID);
 
-			// Are there any resources left to be found
-			if(commandArray.length > 3) {
-				if(waitingSearches.get(searchID).split(" ").length == 1) // Add resources not found to waiting searches
-					waitingSearches.replace(
-						searchID, waitingSearches.get(searchID) +
-						" " +
-						Arrays.stream(commandArray, 3, commandArray.length).collect(Collectors.joining(" "))
-					);
-				resourcesNotFound += waitingSearches.get(searchID).split(" ")[1];
-				waitingSearches.replace(searchID, searchesLeft - 1 + " " + resourcesNotFound); // we are waiting for one less denial/success for our own request
-			} else {
-				waitingSearches.replace(searchID, searchesLeft - 1 + ""); // we are waiting for one less denial/success for our own request
-			}
-			searchesLeft -= 1;
+			waitingSearches.replace(searchID, searchesLeft - 1);
+
+			searchesLeft = waitingSearches.get(searchID);
+
+			printInfo("Searches remaining for order " + searchID + ": " + searchesLeft);
 
 			// This was the last response. Process the request further.
 			if(searchesLeft == 0){
@@ -323,6 +329,8 @@ public class NetworkNode {
 				// if it came from one of our outer addresses
 				boolean isSearchFromOuter = outerAddresses.contains(commandArray[0]);
 				boolean isSearchFromInner = innerAddresses.contains(commandArray[0]);
+
+				boolean iAmTheOriginator = getOwnAddressString().equals(commandArray[1]);
 
 				// did it come from this PC? consider only ports then
 				if(
@@ -334,65 +342,88 @@ public class NetworkNode {
 					String remotePort = commandArray[0].split(":")[1];
 
 					for(String address : outerAddresses){
-						System.out.println(address.split(":")[1] + " = " + remotePort);
 						if (address.split(":")[1].equals(remotePort)) { isSearchFromOuter = true; break; }
 					}
 
 					for(String address : innerAddresses){
-						System.out.println(address.split(":")[1] + " = " + remotePort);
 						if (address.split(":")[1].equals(remotePort)) { isSearchFromInner = true; break; }
 					}
 				}
 
 				HashMap<String, Integer> remainingResources = new HashMap<>();
-				if(!resourcesNotFound.equals(""))
-					for(String resourceString : resourcesNotFound.split(" ")){
-						remainingResources.put(resourceString.split(":")[0], Integer.parseInt(resourceString.split(":")[1]));
+				String remainingResourceString = "";
+				if(commandArray.length > 3)
+					for(String resourceString : Arrays.copyOfRange(commandArray, 3, commandArray.length)){
+						remainingResourceString += " " + resourceString;
+						remainingResources.put(resourceString.split(":")[0], Integer.parseInt(resourceString.split(":")[1].split("/")[1]) - Integer.parseInt(resourceString.split(":")[1].split("/")[0]));
+
+						System.out.println("This needs to stop!");
+						
+						if(resourceString.split(":")[1].split("/")[0].equals("0"))
+							failedAcquisitions.put(commandArray[0], remainingResourceString);
 					}
 
+				ArrayList<String> addresses = null;
+
+				if(isSearchFromOuter && !iAmTheOriginator){
+					addresses = new ArrayList<String>(outerAddresses);
+				} else {
+					addresses = new ArrayList<String>(innerAddresses);
+				}
+
+				addresses = (ArrayList<String>) addresses.stream().filter(x -> !failedAcquisitions.containsKey(x)).collect(Collectors.toList());
+
+				printInfo(""+isSearchFromOuter);
+				printInfo(""+isSearchFromInner);
+				printInfo(""+remainingResources);
+
 				// This was the first search and it was on outer addresses, conduct second search on outer addresses
-				if(isFirstSearch && isSearchFromOuter && !resourcesNotFound.equals("")) {
-					processLockSend(commandArray[1], requestID.split("_")[0] + "_2", remainingResources, outerAddresses);
-					System.out.println("outer second");
+				if(isSearchFromOuter && remainingResources.size() > 0 && addresses.size() > 0) {
+					processLockSend(commandArray[1], requestID.split("_")[0] + "_2", remainingResources, addresses);
+					printInfo("Conducting second search on outer addresses: " + addresses.toString());
 				// This was a second search on outer addresses, conduct first search on inner addresses
-				} else if(!isFirstSearch && isSearchFromOuter && !resourcesNotFound.equals("")) {
-					processLockSend(commandArray[1], requestID.split("_")[0] + "_1", remainingResources, innerAddresses);
-					System.out.println("inner first");
+				} else if(isSearchFromOuter && iAmTheOriginator && remainingResources.size() > 0 && addresses.size() > 0) {
+					processLockSend(commandArray[1], requestID.split("_")[0] + "_1", remainingResources, addresses);
+					printInfo("Conducting first search on inner addresses: " + addresses.toString());
 				// This was the first search on inner addresses (whether we had outer addresses or not), conduct second search on inner addresses
-				} else if (isFirstSearch && isSearchFromInner && !resourcesNotFound.equals("")) {
-					processLockSend(commandArray[1], requestID.split("_")[0] + "_2", remainingResources, innerAddresses);
-					System.out.println("inner second");
+				} else if (isSearchFromInner && iAmTheOriginator && remainingResources.size() > 0 && addresses.size() > 0) {
+					processLockSend(commandArray[1], requestID.split("_")[0] + "_2", remainingResources, addresses);
+					printInfo("Conducting second search on inner addresses: " + addresses.toString());
 				}
 				// This was the second search on inner addresses (final search)
 				else {
 
-					if(getOwnAddressString().equals(commandArray[1])){
+					if(iAmTheOriginator){
 						printInfo("Request for which we are an originator was finished");
 						// All resources were locked
 						ResourceRequest rrq = requestsInProgress.get(requestID.split("_")[0]);
 
-						if(resourcesNotFound.equals("")){
+						if(rrq.remaining.values().stream().reduce(0, (a, b) -> a + b) == 0){
 							rrq.finalizeOrder(nodeUdpServer);
 						} else {
 							processRequestFail(rrq);
 						}
+
 					} else {
 						printInfo("Request for which we are not an originator was finished");
 
 						String message = "FIN " + commandArray[1] + " " + commandArray[2];
 
-						if(!resourcesNotFound.equals("")){
-							message += (" " + resourcesNotFound);
-						}
+						if(commandArray.length > 3)
+							for(int i = 3; i < commandArray.length; i++){
+								message += " " + commandArray[i];
+							}
 
 						nodeUdpServer.send(message, commandArray[1].split(":")[0], Integer.parseInt(commandArray[1].split(":")[1]));
-						System.out.println("Sending FIN with the following data: " + message);
+						printInfo("Sending FIN with the following data: " + message);
 					}
+
+					waitingSearches.remove(requestID.split("_")[0]);
 				}
 
 			}
 
-			printInfo("Got FIN, searchesWaiting: " + waitingSearches.toString());
+			printInfo("Got FIN, waitingSearches: " + waitingSearches.toString());
 	}
 
 	private void processRedirect(String commandArgs){
@@ -403,7 +434,7 @@ public class NetworkNode {
 			int gatewayPort = Integer.parseInt(commandArgs.split(":")[1]);
 
 			innerAddresses.add(commandArgs);
-			nodeUdpServer.send("CON", gatewayAddr, gatewayPort);
+			nodeUdpServer.send("HONK", gatewayAddr, gatewayPort);
 			printInfo("  Asked " + gatewayAddr + ":" + gatewayPort + " to connect us to the network.");
 
 	}
@@ -461,6 +492,8 @@ public class NetworkNode {
 	private void processRequestFail(ResourceRequest request){
 		printInfo("Order " + request.getIdentifier() + " placed with this node could not be completed and has failed.");
 
+		printInfo("Missing resources: " + request.getOrderRemaining());
+
 		request.getClientHandler().send("FAILED");
 		request.release(nodeUdpServer);
 		request.status = RequestStatus.DENIED;
@@ -476,6 +509,10 @@ public class NetworkNode {
 	}
 
 	public void processLockSend(String originator, String orderId, HashMap<String, Integer> requestedResources, ArrayList<String> addresses){
+
+		printInfo("Processing lock send");
+		printInfo("Addresses: " + addresses);
+		printInfo("Resources: " + requestedResources);
 
 		HashMap<String, String> partitionedResources = new HashMap<>();
 
@@ -494,6 +531,8 @@ public class NetworkNode {
 
 				remainderReceiver = addresses.get((int)Math.round(Math.random() * (addresses.size() - 1)));
 
+				printInfo("Remainder Receiver " + remainderReceiver);
+
 				if(requestAmount == 0) messageAmount = 1;
 
 			} else {
@@ -502,30 +541,29 @@ public class NetworkNode {
 
 			}
 
-			// we are always the search originator if we are sending LOKs
-			waitingSearches.put(orderId.split("_")[0] + "/" + getOwnAddressString(), String.valueOf(messageAmount)); // waiting for n FINs to send to X
-
 			for(String address : addresses){
 				
 				int amountToRequest = requestAmount;
 				if(address.equals(remainderReceiver)) amountToRequest += amountRemaining;
 
+				if(amountToRequest == 0) continue;
+
 				if(!partitionedResources.containsKey(address))
 					partitionedResources.put(address, "");
 
-				if(amountToRequest == 0) continue;
-
-				partitionedResources.replace(address, partitionedResources.get(address) + " " + orderPart.getKey() + ":" + amountToRequest);
-
+				partitionedResources.put(address, partitionedResources.get(address) + " " + orderPart.getKey() + ":" + amountToRequest);
+				printInfo("Partitioned resources: " + partitionedResources);
 			}
 			
 		}
 
-		printInfo("Sending locks to the provided addresses.");
+		// we are always the search originator if we are sending LOKs
+		waitingSearches.put(orderId.split("_")[0], partitionedResources.size()); // waiting for n FINs to send to X
+		printInfo("Waiting for " + partitionedResources.size() + " searches to be completed.");
 
 		for(Entry<String, String> res : partitionedResources.entrySet()){
 
-				if(res.getValue().equals("")) continue;
+				if(res.getValue().equals("") || res.getValue().equals("0")) continue;
 
 				nodeUdpServer.send(
 					"LOK " + originator + " " + orderId + res.getValue(),
@@ -598,6 +636,7 @@ public class NetworkNode {
 			}
 
 			return "";
+
 		});
 
 		// Node message callback
@@ -619,7 +658,6 @@ public class NetworkNode {
 			messageQueue.add(new SimpleEntry<String[], Boolean>(tempMessage, true));
 
 			if(queueWasEmpty){
-				System.out.println("Queue was empty!");
 				lock.lock();
 				queueNotEmpty.signalAll();
 				lock.unlock();
@@ -825,6 +863,16 @@ public class NetworkNode {
 					if(resources == null) resources = args[i];
 					else resources += " " + args[i];
 			}
+	}
+
+	if(tcpPort == 0){
+		System.out.println("Error! Did not specify port parameter.");
+		System.exit(1);
+	}
+
+	if(identifier == null){
+		System.out.println("Warning! Did not specify identifier! A random number will be used (may not be unique)");
+		identifier = String.valueOf(Math.round(Math.random() * 1000000));
 	}
 
 	new NetworkNode(identifier, tcpPort, gatewayAddr, gatewayPort, resources);
