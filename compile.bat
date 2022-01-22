@@ -1,0 +1,1 @@
+"%JAVA_HOME%\bin\javac.exe" -cp "src\main" "%cd%\src\main\NetworkNode.java"
