@@ -1,3 +1,2 @@
-**/bin
-**/bin/tcpudp_lib
 *.class
+bin/
