@@ -328,7 +328,7 @@ public class NetworkNode {
 			// 0. message address
 			// 1. request originator address
 			// 2. requestID
-			// 3-n. if the request was not filled, resources that were not allocated
+			// 3-n. resources that were allocated and their amount (can be 0)
 
 			// Schema:
 			// 1. Search outer addresses if we have them (twice - if the first search did not complete the request)
