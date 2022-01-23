@@ -155,7 +155,7 @@ public class NetworkNode {
 			String resName = singleResString.split(":")[0];
 			int resAmount = Integer.parseInt(singleResString.split(":")[1]);
 
-			resources.put(resName, new NetworkResource(resName, getOwnAddressString(), resAmount));
+			resources.put(resName, new NetworkResource(resName, resAmount));
 		}
 
 	}
