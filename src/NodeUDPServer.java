@@ -15,7 +15,11 @@ public class NodeUDPServer extends UDPServer {
 	/** This function is called whenever a message is received */
 	private Consumer<DatagramPacket> callback;
 	
-	/** Basic constructor */
+	/**
+	 * Basic constructor
+	 * @param port listen/send port for this server
+	 * @param callback function to be called when receiving messages
+	 */
 	public NodeUDPServer(int port, Consumer<DatagramPacket> callback){
 		super(port);
 
@@ -23,12 +27,18 @@ public class NodeUDPServer extends UDPServer {
 
 	}
 
-	/** No-callback constructor */
+	/**
+	 * Basic constructor, without a message callback
+	 * @param port the listen port/send port for this server
+	 */
 	public NodeUDPServer(int port){
 		super(port);
 	}
 
-	/** This function adds or changes the callback function of a server */
+	/**
+	 * Sets/changes the message callback for this node to use when receiving a new message
+	 * @param callback function to be called with the datagram packet once such packet is received
+	 */
 	public void setCallback(Consumer<DatagramPacket> callback){
 		this.callback = callback;
 	}

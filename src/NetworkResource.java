@@ -28,7 +28,7 @@ public class NetworkResource {
 
 	/**
 	 * 
-	 * @return HashMap <OwnerID, Amount> representing who owns what amount of the resource.
+	 * @return HashMap Key: OwnerID, Value: Amount representing who owns what amount of the resource.
 	 */
 	public HashMap<String, Integer> getOwners(){
 		return owners;

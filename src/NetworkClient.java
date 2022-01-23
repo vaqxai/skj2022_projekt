@@ -27,7 +27,15 @@ import java.io.PrintWriter;
 import java.net.Socket;
 import java.net.UnknownHostException;
 
+/**
+ * The client class for the "Resource reservation system" project.
+ */
 public class NetworkClient {
+    /**
+     * Client init and execution
+     * @param args commandline arguments
+     * @throws IOException if no connection with the server is possible
+     */
     public static void main(String[] args) throws IOException {
         // parameter storage
 	String gateway = null;

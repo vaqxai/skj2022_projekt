@@ -9,10 +9,20 @@ import java.util.function.*;
 	* Copied from https://github.com/vaqxai/java-tcpclientserver/
  */
 public class ClientHandler implements Runnable {
+
+	/** Socket used to communicate with the client */
 	private final Socket clientSocket;
+
+	/** Should this client handler print debug infromation */
 	private boolean silent = false;
+
+	/** Reads from the client connection */
 	private BufferedReader input = null;
+
+	/** Writes to the client connection */
 	private PrintWriter output = null;
+
+	/** Stores received messages in a queue */
 	private LinkedList<Message> received = new LinkedList<>();
 
 	/**

@@ -9,10 +9,18 @@ import java.util.LinkedList;
  */
 public class UDPServer extends Thread {
 
+	/** Internal socket to be used by the server */
 	protected DatagramSocket socket;
+
+	/** Whether debug information should be printed */
 	protected boolean silent;
+
+	/** Is this server currently running */
 	protected boolean running;
+
+	/** Incoming message buffer */
 	protected byte[] buf = new byte[256];
+
 	/**
 	 * The data in UDP messages is unprocessed, it may have line terminators, etc.
 	 */

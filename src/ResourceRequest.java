@@ -10,6 +10,7 @@ import tcpudp_lib.UDPServer;
  */
 public class ResourceRequest {
 
+	/** All resource requests ever sent from this node */
 	static ArrayList<ResourceRequest> all = new ArrayList<>();
 
 	/**
@@ -146,7 +147,7 @@ public class ResourceRequest {
 	}
 
 	/**
-	 * Internal method that sends a <COMMAND> [<RES1>:<RESVAL1> <RES2>:<RESVAL2> ...] command to all nodes that have resources that this request has locked.
+	 * Internal method that sends a COMMAND RES1:RESVAL1 RES2:RESVAL2 ... command to all nodes that have resources that this request has locked.
 	 * @param server The UDP Server that will send the messages
 	 * @param command The command to be sent (usually ULK or RES)
 	 */
@@ -183,9 +184,10 @@ public class ResourceRequest {
 	}
 
 	/**
-	 * Put in a request with this node for the following resources
-	 * @param originator The client that originally placed the order
-	 * @param order Identifier, Amount hash map
+	 * Puts in a request with this node for specific resources
+	 * @param originator request originator node address
+	 * @param originatorHandler handler for the connection of the client associated with this request
+	 * @param order hash map Key: ResourceID Value: ResourceAmount of the requested resources
 	 */
 	public ResourceRequest(String originator, ClientHandler originatorHandler, HashMap<String, Integer> order){
 		this.originator = originator;
@@ -197,9 +199,10 @@ public class ResourceRequest {
 	}
 
 	/**
-	 * Put in a request with this node for the following resource strings
-	 * @param originator The client that originally placed the order
-	 * @param orderStrings Formatted order string "X:# Y:# Z:#"
+	 * Puts in a request with this node for specific resources
+	 * @param originator request originator node address
+	 * @param originatorHandler handler for the connection of the client associated with this request
+	 * @param orderStrings formatted resource string representing the resources (ResourceID:ResourceAmount)
 	 */
 	public ResourceRequest(String originator, ClientHandler originatorHandler, String ... orderStrings){
 		this.originator = originator;

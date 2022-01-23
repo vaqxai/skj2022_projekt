@@ -7,17 +7,36 @@ import java.util.Map.Entry;
  */
 public class NetworkSearch {
 
+	/** 
+	 * All network searches ever conducted on this node (or all nodes if nodes ran on threads derived from same main thread)
+	*/
 	public static HashMap<String, NetworkSearch> all = new HashMap<>();
 
+	/**
+	 * Returns a search conducted from the thread this method is called from, found in all searches ever conducted
+	 * @param searchID the search's identifier
+	 * @return the search object if found, null otherwise
+	 */
 	public static NetworkSearch getByID(String searchID){
 		return all.get(Thread.currentThread().getId() + searchID);
 	}
 	
+	/** The identifier of this search (ClientID:sequentialNumber) */
 	private String searchID = "N/A";
+
+	/** How many searches are to be performed */
 	private int searchesLeft = 0;
+
+	/** What is this searching for? */
 	private HashMap<String, Integer> manifest = new HashMap<>();
+
+	/** What is this still searching for? */
 	private HashMap<String, Integer> remaining = new HashMap<>();
+
+	/** Which addresses don't have any of what it's seaching for */
 	private ArrayList<String> failedHosts = new ArrayList<>();
+
+	/** Is this the first or the second search (each 'search' request can be ran twice) in the series */
 	private boolean firstSearch;
 
 	/**
@@ -75,7 +94,7 @@ public class NetworkSearch {
 
 	/**
 	 * Changes the amount of requests left in this search
-	 * @param newAmount
+	 * @param newAmount the amount of requests still left to be performed
 	 */
 	public void setAmountLeft(int newAmount){
 		this.searchesLeft = newAmount;
@@ -185,7 +204,7 @@ public class NetworkSearch {
 	/**
 	 * Increments a remaining entry by a given value
 	 * @param identifier key to the value
-	 * @param newValue amount by which to increment the value
+	 * @param amount amount by which to increment the value
 	 */
 	public void incrementRemainingEntry(String identifier, int amount){
 		this.remaining.replace(identifier, this.remaining.get(identifier) + amount);

@@ -19,22 +19,29 @@ import tcpudp_lib.TCPServer;
  */
 public class NetworkNode {
 
+	/** This node's human friendly identifier */
 	public final String identifier;
+
+	/** Whether it should produce debug infromation */
 	public boolean silentMode = false; // does this do anything?
 
 	/** keeps track of which node to redirect incoming connections to next if this node is full */
 	private int lastRedirIndex = -1;
 
-	// for client communication
+	/** Communicates with any clients that want to use this node */
 	public TCPServer nodeTcpServer = null;
 
-	// for inter-node communication
+	/** Communicates with other nodes */
 	public NodeUDPServer nodeUdpServer = null;
 
 	/**
-	 * Addresses of the network nodes this node knows about.
+	 * Addresses of the network nodes this node knows about. (Inner star table)
  	 */
 	ArrayList<String> innerAddresses = new ArrayList<>();
+
+	/**
+	 * Addresses of the network nodes this node knows about. (Outer star table)
+	 */
 	ArrayList<String> outerAddresses = new ArrayList<>();
 
 	/**
@@ -546,7 +553,7 @@ public class NetworkNode {
 	 * @param request the ResourceRequest we are sending this for
 	 * @param addresses the addresses we are sending this to
 	 */
-	public void processLockSend(ResourceRequest request, ArrayList<String> addresses){
+	private void processLockSend(ResourceRequest request, ArrayList<String> addresses){
 		processLockSend(getOwnAddressString(), String.valueOf(request.getIdentifier()), request.getOrderRemaining(), addresses);
 	}
 
@@ -557,7 +564,7 @@ public class NetworkNode {
 	 * @param requestedResources resource string (that we are requesting)
 	 * @param addresses the addresses we are sending this to
 	 */
-	public void processLockSend(String originator, String orderId, HashMap<String, Integer> requestedResources, ArrayList<String> addresses){
+	private void processLockSend(String originator, String orderId, HashMap<String, Integer> requestedResources, ArrayList<String> addresses){
 
 		HashMap<String, String> partitionedResources = new HashMap<>();
 
@@ -617,7 +624,7 @@ public class NetworkNode {
 	/**
 	 * Diagonstic message about resources on this node.
 	 */
-	public void printResources(){
+	private void printResources(){
 
 		printInfo("Resources:");
 		for(Entry<String, NetworkResource> res : resources.entrySet()){

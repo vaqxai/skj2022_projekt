@@ -11,8 +11,13 @@ import java.util.function.*;
  */
 public class TCPServer implements Runnable { // runnable so it doesn't block rest of program.
 
+	/** Listen port */
 	private int port;
+
+	/** Communication socket */
 	private ServerSocket server = null;
+
+	/** Should it print debug information */
 	private boolean silentMode = false;
 		/**
 	 * The data in TCP messages has no line terminators.
@@ -40,6 +45,10 @@ public class TCPServer implements Runnable { // runnable so it doesn't block res
 		this.callbackFunction = newCallback;
 	}
 
+	/**
+	 * 
+	 * @return message callback associated with this server
+	 */
 	public BiFunction<Socket, String, String> getAutoResponse(){
 		return this.callbackFunction;
 	}
