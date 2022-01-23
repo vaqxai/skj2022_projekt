@@ -5,6 +5,9 @@ import java.util.Map.Entry;
 import tcpudp_lib.ClientHandler;
 import tcpudp_lib.UDPServer;
 
+/**
+ * Represents an ongoing request from a client (only used on the request processing/receiver node)
+ */
 public class ResourceRequest {
 
 	static ArrayList<ResourceRequest> all = new ArrayList<>();

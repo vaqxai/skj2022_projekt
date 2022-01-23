@@ -1,5 +1,8 @@
 package tcpudp_lib;
 
+/**
+ * Copied from https://github.com/vaqxai/java-tcpclientserver/
+ */
 public class Message {
 
 	private String data;

@@ -6,6 +6,7 @@ import java.util.function.*;
 
 /**
 	* This class handles a single client that's connected to the server.
+	* Copied from https://github.com/vaqxai/java-tcpclientserver/
  */
 public class ClientHandler implements Runnable {
 	private final Socket clientSocket;

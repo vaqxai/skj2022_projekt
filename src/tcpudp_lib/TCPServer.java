@@ -6,7 +6,8 @@ import java.util.ArrayList;
 import java.util.function.*;
 
 /**
-* TCPServer is a multithreaded ServerSocket wrapper that can respond to requests from multiple clients at once, using a predetermined callback.
+ * TCPServer is a multithreaded ServerSocket wrapper that can respond to requests from multiple clients at once, using a predetermined callback.
+ * Copied from http://github.com/vaqxai/java-tcpclientserver/
  */
 public class TCPServer implements Runnable { // runnable so it doesn't block rest of program.
 

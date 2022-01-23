@@ -4,6 +4,9 @@ import java.io.IOException;
 import java.net.*;
 import java.util.LinkedList;
 
+/**
+ * Copied from https://github.com/vaqxai/java-tcpclientserver/
+ */
 public class UDPServer extends Thread {
 
 	protected DatagramSocket socket;
