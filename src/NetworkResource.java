@@ -98,6 +98,14 @@ public class NetworkResource {
 	}
 
 	/**
+	 * Changes the amount of this resource that is available
+	 * @param amount new amount of this resource
+	 */
+	public void setAmount(int amount){
+		this.availableAmount = amount;
+	}
+
+	/**
 	 * 
 	 * @return this resource's identifier/name
 	 */
