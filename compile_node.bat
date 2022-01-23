@@ -1,0 +1,1 @@
+"%JAVA_HOME%\bin\javac.exe" -cp "src" "%cd%\src\NetworkNode.java" -d "bin" -encoding UTF-8
