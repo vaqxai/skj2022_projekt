@@ -7,10 +7,15 @@ import java.util.function.Consumer;
 import tcpudp_lib.Message;
 import tcpudp_lib.UDPServer;
 
+/**
+ * Special version of a UDP 'Server' that has been adjusted for usage in a network node
+ */
 public class NodeUDPServer extends UDPServer {
 
+	/** This function is called whenever a message is received */
 	private Consumer<DatagramPacket> callback;
 	
+	/** Basic constructor */
 	public NodeUDPServer(int port, Consumer<DatagramPacket> callback){
 		super(port);
 
@@ -18,10 +23,12 @@ public class NodeUDPServer extends UDPServer {
 
 	}
 
+	/** No-callback constructor */
 	public NodeUDPServer(int port){
 		super(port);
 	}
 
+	/** This function adds or changes the callback function of a server */
 	public void setCallback(Consumer<DatagramPacket> callback){
 		this.callback = callback;
 	}
@@ -55,6 +62,7 @@ public class NodeUDPServer extends UDPServer {
 
 	}
 
+	/** Server's main loop that reads from the socket and calls the callback function with the received packet */
 	public void run(){
 
 		while(true){
