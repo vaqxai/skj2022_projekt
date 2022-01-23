@@ -891,6 +891,7 @@ public class NetworkNode {
 		}
 
 		printInfo("END");
+		System.exit(0);
 
 	}
 
