@@ -20,7 +20,9 @@ import tcpudp_lib.TCPServer;
 public class NetworkNode {
 
 	public final String identifier;
-	public boolean silentMode = false;
+	public boolean silentMode = false; // does this do anything?
+
+	/** keeps track of which node to redirect incoming connections to next if this node is full */
 	private int lastRedirIndex = -1;
 
 	// for client communication
@@ -29,9 +31,15 @@ public class NetworkNode {
 	// for inter-node communication
 	public NodeUDPServer nodeUdpServer = null;
 
+	/**
+	 * Addresses of the network nodes this node knows about.
+ 	 */
 	ArrayList<String> innerAddresses = new ArrayList<>();
 	ArrayList<String> outerAddresses = new ArrayList<>();
 
+	/**
+	 * Map of all resources this node has
+	 */
 	HashMap<String, NetworkResource> resources = new HashMap<>();
 
 	/**
@@ -40,16 +48,24 @@ public class NetworkNode {
 	HashMap<String, NetworkSearch> searches = new HashMap<>();
 
 	/**
-	 * Where String is order ID : clientIdentifier:sequentialNumber
+	 * Where String is order ID : clientIdentifier:sequentialNumber, holds requests that this node is currently processing
 	 */
 	HashMap<String, ResourceRequest> requestsInProgress = new HashMap<>();
 
+	/**
+	 * Console information, with this node's identifier
+	 * @param info the message to be sent to the console
+	 */
 	private void printInfo(String info){
 
 		if(!silentMode)
 			System.out.println("[" + identifier + "] " + info);
 	}
 
+	/**
+	 * Processes a command that adds a new node to our tables
+	 * @param addNodeAddrStr contains the address/es of the new node to be added
+	 */
 	private void processAddCmd(String addNodeAddrStr){
 
 		String[] addNodeAddrStrArr = addNodeAddrStr.split(" ");
