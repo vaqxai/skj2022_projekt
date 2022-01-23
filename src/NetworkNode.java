@@ -14,6 +14,9 @@ import java.util.stream.Collectors;
 import tcpudp_lib.ClientHandler;
 import tcpudp_lib.TCPServer;
 
+/**
+ * This class provides functionality for the network nodes.
+ */
 public class NetworkNode {
 
 	public final String identifier;
