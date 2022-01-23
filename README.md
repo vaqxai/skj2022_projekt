@@ -17,4 +17,5 @@ java NetworkClient -ident <identyfikator> -gateway <adres>:<port> <lista zasobó
 ## Dokumentacja
 
 javadoc w folderze docs/
+
 dokumentacja algorytmu/opis w pliku Dokumentacja.pdf
