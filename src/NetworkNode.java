@@ -64,6 +64,10 @@ public class NetworkNode {
 
 	}
 
+	/**
+	 * Get this machine's network address and port separated by a colon.
+	 * @return a formtted string representing the network address
+	 */
 	private String getOwnAddressString(){
 		try{
 			return Inet4Address.getLocalHost().getHostAddress() + ":" + nodeUdpServer.getSocket().getLocalPort();
@@ -72,6 +76,11 @@ public class NetworkNode {
 		}
 	}
 
+	/**
+	 * Processes a new node that conntected to the network using this node.
+	 * @param addressTable address table to add this node to. it will be outerAddresses if innerAddresses are full
+	 * @param newNodeAddrStr address of the new node
+	 */
 	private void processNewNode(ArrayList<String> addressTable, String newNodeAddrStr){
 
 		// send new node info to existing nodes in own address tab
@@ -101,6 +110,10 @@ public class NetworkNode {
 
 	}
 
+	/**
+	 * Handles an incoming node connection request
+	 * @param gatewayAddrStr the new node's address formatted as ip:port
+	 */
 	private void nodeConnected(String gatewayAddrStr){
 
 		if(innerAddresses.size() < 4){ // Inner addresses not full
@@ -128,6 +141,10 @@ public class NetworkNode {
 
 	}
 
+	/**
+	 * Handles generating NetworkResource objects from a resource string for this node
+	 * @param resourceString resource string formatted as resourceID:resourceAmount
+	 */
 	private void processResources(String resourceString){
 
 		String[] resourceArray = resourceString.split(" ");
@@ -141,6 +158,10 @@ public class NetworkNode {
 
 	}
 
+	/**
+	 * Handles an incoming resource lock request
+	 * @param commandArgs space separated list: sender address, request originator address, orderID, resource string (resourceID:resourceAmount)
+	 */
 	private void processLock(String commandArgs){
 		
 		String[] commandArray = commandArgs.split(" ");
@@ -273,9 +294,8 @@ public class NetworkNode {
 	}
 
 	/**
-	 * Executed internally when search for available values has ended (SUC or FIL)
-	 * @param request forwarded request from SUC or FIL
-	 * @param commandArgs forwarded command arguments from SUC or FIL
+	 * Executed internally when search for available values has ended (received a FIN)
+	 * @param commandArgs space separated list: sender address, request originator address, orderID, resource string (resourceID:resourceAmount) where the amount is the amount that was successfully locked
 	 */
 	private void requestSearchEnded(String commandArgs){
 
@@ -410,6 +430,10 @@ public class NetworkNode {
 			}
 	}
 
+	/**
+	 * Retries connecting to a network once received a redirect command
+	 * @param commandArgs the new address to connect to
+	 */
 	private void processRedirect(String commandArgs){
 
 			innerAddresses.remove(0);
@@ -423,6 +447,10 @@ public class NetworkNode {
 
 	}
 
+	/**
+	 * Process a lock request. Either send more lock requests down our network, or deny/fulfill the request straight away.
+	 * @param commandArgs space separated list: message sender address, request originator address, orderID, resource string (resourceID:resourceAmount) where the amount is the amount that was successfully locked.
+	 */
 	private void processLockResponse(String commandArgs){
 
 		String[] commandArray = commandArgs.split(" ");
@@ -431,7 +459,7 @@ public class NetworkNode {
 		// 0. message sender address
 		// 1. request originator address
 		// 2. requestID (clientID:orderID_searchNo)
-		// 3-n. either the resourcs that were successfully locked (SUC) or resources that failed to be locked (FIL)
+		// 3-n. the resourcs that were successfully locked
 
 		ResourceRequest rrq = requestsInProgress.get(commandArray[2]);
 		for(int i = 3; i < commandArray.length; i++){
@@ -446,6 +474,10 @@ public class NetworkNode {
 
 	}
 
+	/**
+	 * Process a unlock command. Releases held resources to be available again.
+	 * @param commandArgs resource string (resourceID:resourceAmount) for the resource(s) to be released.
+	 */
 	private void processUnlock(String commandArgs){
 		String[] commandArray = commandArgs.split(" ");
 
@@ -459,6 +491,10 @@ public class NetworkNode {
 		printInfo("Someone unlocked the following resources on this node: " + commandArgs);
 	}
 
+	/**
+	 * Process a reservation command. Makes the resources unavailable permanently and associates them with a specific client.
+	 * @param argsStr clientID, resource string (resourceID:resourceAmount)
+	 */
 	private void processReservation(String argsStr){
 
 		String[] args = argsStr.split(" ");
@@ -473,6 +509,10 @@ public class NetworkNode {
 		
 	}
 
+	/**
+	 * Process a request fail.
+	 * @param request the request that has failed.
+	 */
 	private void processRequestFail(ResourceRequest request){
 		printInfo("Order " + request.getIdentifier() + " placed with this node could not be completed and has failed.");
 
@@ -492,6 +532,13 @@ public class NetworkNode {
 		processLockSend(getOwnAddressString(), String.valueOf(request.getIdentifier()), request.getOrderRemaining(), addresses);
 	}
 
+	/**
+	 * Process sending a lock request(s) to specific addresses.
+	 * @param originator request originator
+	 * @param orderId orderID
+	 * @param requestedResources resource string (that we are requesting)
+	 * @param addresses the addresses we are sending this to
+	 */
 	public void processLockSend(String originator, String orderId, HashMap<String, Integer> requestedResources, ArrayList<String> addresses){
 
 		HashMap<String, String> partitionedResources = new HashMap<>();
@@ -549,6 +596,9 @@ public class NetworkNode {
 
 	}
 
+	/**
+	 * Diagonstic message about resources on this node.
+	 */
 	public void printResources(){
 
 		printInfo("Resources:");
@@ -562,6 +612,14 @@ public class NetworkNode {
 
 	}
 
+	/**
+	 * Primary constructor of the networkNode.
+	 * @param identifier the name of the node
+	 * @param tcpPort the port that this node will listen at (both TCP for clients and UDP for other nodes)
+	 * @param gatewayAddr the address that this node will use to connect to the network
+	 * @param gatewayPort the port that this node will use to connect to the network
+	 * @param resources the resource string representing the resources on this
+	 */
 	public NetworkNode(String identifier, int tcpPort, String gatewayAddr, int gatewayPort, String resources){
 
 		this.identifier = identifier + " (:" + tcpPort + ")";
@@ -811,7 +869,11 @@ public class NetworkNode {
 
 	}
 
-	public static void main(String[] args) throws IOException {
+	/**
+	 * Main method that creates the node object and proceses initialization arguments.
+	 * @param args space separated dash prefixed runtime arguments.
+	 */
+	public static void main(String[] args) {
 
 	// parameter storage
 	String gatewayAddr = null;
